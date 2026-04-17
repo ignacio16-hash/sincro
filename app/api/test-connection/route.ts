@@ -115,9 +115,14 @@ export async function POST(req: NextRequest) {
     config: Record<string, string>;
   };
 
-  // Merge with stored credentials for masked fields
-  const stored = await prisma.apiCredential.findUnique({ where: { platform } });
-  const storedConfig = (stored?.config as Record<string, string>) || {};
+  // Try to merge with stored credentials (for masked fields), but don't fail if DB is unavailable
+  let storedConfig: Record<string, string> = {};
+  try {
+    const stored = await prisma.apiCredential.findUnique({ where: { platform } });
+    storedConfig = (stored?.config as Record<string, string>) || {};
+  } catch { /* DB not available — use rawConfig only */ }
+
+  // rawConfig takes priority (fresh values override stored masked values)
   const config: Record<string, string> = { ...storedConfig, ...rawConfig };
 
   let result: TestResult;
