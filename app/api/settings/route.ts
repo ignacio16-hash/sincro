@@ -5,16 +5,19 @@ export async function GET() {
   try {
     const credentials = await prisma.apiCredential.findMany();
     // Mask sensitive fields
+    const SENSITIVE_KEYS = new Set(["accessToken", "apiKey"]);
     const safe = credentials.map((c) => {
       const config = c.config as Record<string, string>;
       const masked: Record<string, string> = {};
       for (const key of Object.keys(config)) {
         const val = config[key];
-        masked[key] = val
-          ? val.length > 8
+        if (SENSITIVE_KEYS.has(key) && val) {
+          masked[key] = val.length > 8
             ? val.slice(0, 4) + "••••••••" + val.slice(-4)
-            : "••••••••"
-          : "";
+            : "••••••••";
+        } else {
+          masked[key] = val || "";
+        }
       }
       return { ...c, config: masked };
     });
