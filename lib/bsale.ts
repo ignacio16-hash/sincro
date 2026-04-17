@@ -123,36 +123,51 @@ export async function receiveBsaleStock(
   });
 }
 
-// Get all SKUs with current stock (full catalog scan)
+// Get all SKUs with current stock using stocks endpoint + expand=[variant]
+// This avoids N+1 calls — one paginated request returns stock + variant SKU together.
+// When no officeId, stocks from all offices are summed per SKU.
 export async function getAllBsaleSkus(
   accessToken: string,
   officeId?: number
 ): Promise<{ sku: string; variantId: number; name: string; stock: number }[]> {
-  const results: { sku: string; variantId: number; name: string; stock: number }[] = [];
+  const client = getClient(accessToken);
+  const skuMap = new Map<string, { sku: string; variantId: number; name: string; stock: number }>();
   let offset = 0;
   const limit = 50;
 
   while (true) {
-    const { list } = await getBsaleVariants(accessToken, limit, offset);
-    if (!list || list.length === 0) break;
+    const params: Record<string, string | number> = { limit, offset };
+    if (officeId) params.officeid = officeId;
 
-    for (const variant of list) {
-      if (!variant.code) continue;
-      const stock = await getBsaleTotalStock(accessToken, variant.id, officeId);
-      results.push({
-        sku: variant.code,
-        variantId: variant.id,
-        name: variant.description,
-        stock,
-      });
+    // Append expand to URL directly to avoid axios encoding the brackets
+    const { data } = await client.get("/stocks.json?expand=[variant]", { params });
+    const items: Record<string, unknown>[] = data.items || [];
+    if (items.length === 0) break;
+
+    for (const item of items) {
+      const v = item.variant as Record<string, string> | undefined;
+      const sku = v?.code;
+      if (!sku) continue;
+
+      const qty = Number(item.quantityAvailable) || 0;
+      const existing = skuMap.get(sku);
+      if (existing) {
+        existing.stock += qty;
+      } else {
+        skuMap.set(sku, {
+          sku,
+          variantId: parseInt(v!.id || "0"),
+          name: v!.description || "",
+          stock: qty,
+        });
+      }
     }
 
-    // Stop when the page returned fewer items than requested (last page)
-    if (list.length < limit) break;
+    if (items.length < limit) break;
     offset += limit;
   }
 
-  return results;
+  return Array.from(skuMap.values());
 }
 
 // Resolve SKU string → variantId using the variants endpoint
