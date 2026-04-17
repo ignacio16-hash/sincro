@@ -106,6 +106,48 @@ export async function getFalabellaStock(
   return parseInt(product?.Quantity || "0", 10);
 }
 
+export async function getAllFalabellaSkus(
+  apiKey: string,
+  userId: string,
+  country = "CL"
+): Promise<{ sku: string; name: string; quantity: number }[]> {
+  const baseUrl = BASE_URLS[country] || BASE_URLS.CL;
+  const results: { sku: string; name: string; quantity: number }[] = [];
+  let offset = 0;
+  const limit = 100;
+
+  while (true) {
+    const url = buildSignedUrl(baseUrl, "GetProducts", userId, apiKey, {
+      Limit: String(limit),
+      Offset: String(offset),
+    });
+    const client = getClient(userId);
+    const { data } = await client.get(url);
+
+    const products: Record<string, unknown>[] =
+      data?.SuccessResponse?.Body?.Products?.Product ||
+      data?.Body?.Products?.Product || [];
+
+    if (!Array.isArray(products) || products.length === 0) break;
+
+    for (const p of products) {
+      const sku = String(p.SellerSku || "");
+      if (sku) {
+        results.push({
+          sku,
+          name: String(p.Name || ""),
+          quantity: parseInt(String(p.Quantity ?? "0"), 10),
+        });
+      }
+    }
+
+    if (products.length < limit) break;
+    offset += limit;
+  }
+
+  return results;
+}
+
 export async function batchUpdateFalabellaStock(
   apiKey: string,
   userId: string,
