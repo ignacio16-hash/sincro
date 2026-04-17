@@ -2,15 +2,15 @@ import axios from "axios";
 import crypto from "crypto";
 
 // Falabella Seller Center API
-// Docs: https://developers.falabella.com/v500.0.0/reference
+// Docs: https://developers.falabella.com/v600.0.0/reference
 // Auth: HMAC-SHA256 signed query params (NOT Authorization header)
-// Base URL for Chile: https://sellercenter-api.linio.cl/
+// Base URL: https://sellercenter-api.falabella.com/ (linio.cl deprecated)
 
 const BASE_URLS: Record<string, string> = {
-  CL: "https://sellercenter-api.linio.cl/",
-  PE: "https://sellercenter-api.linio.com.pe/",
-  CO: "https://sellercenter-api.linio.com.co/",
-  MX: "https://sellercenter-api.linio.com.mx/",
+  CL: "https://sellercenter-api.falabella.com/",
+  PE: "https://sellercenter-api.falabella.com/",
+  CO: "https://sellercenter-api.falabella.com/",
+  MX: "https://sellercenter-api.falabella.com/",
 };
 
 function buildSignature(

@@ -127,10 +127,11 @@ export default function SettingsPage() {
         body: JSON.stringify({ platform, config: formData[platform] || {} }),
       });
       const json = await res.json();
+      if (!res.ok) { alert(json.error || "Error al guardar"); return; }
       setActiveStatus((prev) => ({ ...prev, [platform]: json.isActive }));
       setSaved(platform);
       setTimeout(() => setSaved(null), 3000);
-    } catch { alert("Error al guardar"); }
+    } catch { alert("Error de red al guardar"); }
     finally { setSaving(null); }
   }
 

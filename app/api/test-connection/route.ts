@@ -50,11 +50,12 @@ async function testParis(config: Record<string, string>): Promise<TestResult> {
 async function testFalabella(config: Record<string, string>): Promise<TestResult> {
   if (!config.apiKey) return { ok: false, message: "Falta el API Key" };
   if (!config.userId) return { ok: false, message: "Falta el User ID (email)" };
+  // linio.cl / linio.com.* are deprecated — all countries now use the same domain
   const BASE_URLS: Record<string, string> = {
-    CL: "https://sellercenter-api.linio.cl/",
-    PE: "https://sellercenter-api.linio.com.pe/",
-    CO: "https://sellercenter-api.linio.com.co/",
-    MX: "https://sellercenter-api.linio.com.mx/",
+    CL: "https://sellercenter-api.falabella.com/",
+    PE: "https://sellercenter-api.falabella.com/",
+    CO: "https://sellercenter-api.falabella.com/",
+    MX: "https://sellercenter-api.falabella.com/",
   };
   const baseUrl = BASE_URLS[config.country || "CL"] || BASE_URLS.CL;
   const timestamp = new Date().toISOString().replace(/\.\d+Z$/, "+0000");
