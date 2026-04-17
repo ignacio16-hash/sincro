@@ -124,19 +124,29 @@ export async function getAllFalabellaSkus(
     const client = getClient(userId);
     const { data } = await client.get(url);
 
-    // Falabella wraps response in SuccessResponse or directly in Body
+    // Surface API-level errors instead of silently returning []
+    const errorCode = data?.Head?.ErrorCode ?? data?.ErrorResponse?.Head?.ErrorCode;
+    if (errorCode) {
+      const msg = data?.Head?.ErrorMessage ?? data?.ErrorResponse?.Head?.ErrorMessage ?? JSON.stringify(data);
+      throw new Error(`Falabella GetProducts error ${errorCode}: ${msg}`);
+    }
+
+    // Products can be under SuccessResponse.Body or Body directly
     const raw =
       data?.SuccessResponse?.Body?.Products?.Product ??
-      data?.Body?.Products?.Product ?? [];
+      data?.Body?.Products?.Product;
 
-    // API returns single object (not array) when there's only one product
+    if (raw == null) {
+      // Unexpected structure — throw so the caller can surface it
+      throw new Error(`Falabella GetProducts: estructura inesperada: ${JSON.stringify(data).slice(0, 300)}`);
+    }
+
+    // API returns a single object (not array) when there is only one product
     const products: Record<string, unknown>[] = Array.isArray(raw)
       ? raw
-      : raw && typeof raw === "object"
+      : typeof raw === "object"
       ? [raw as Record<string, unknown>]
       : [];
-
-    if (products.length === 0) break;
 
     for (const p of products) {
       const sku = String(p.SellerSku || "");
