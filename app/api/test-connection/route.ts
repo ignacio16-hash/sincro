@@ -68,19 +68,21 @@ async function testFalabella(config: Record<string, string>): Promise<TestResult
     Format: "JSON",
     Limit: "1",
   };
-  // Sign raw (unencoded) values sorted alphabetically — per Falabella docs
+  // Seller Center signing: sort alphabetically, concatenate WITHOUT "&" separator
   const sorted = Object.keys(params).sort();
-  const toSign = sorted.map(k => `${k}=${params[k]}`).join("&");
-  params.Signature = crypto.createHmac("sha256", config.apiKey).update(toSign).digest("hex");
+  const toSign = sorted.map(k => `${k}=${params[k]}`).join("");
+  params.Signature = crypto.createHmac("sha256", config.apiKey.trim()).update(toSign).digest("hex");
   const qs = Object.entries(params).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join("&");
   try {
     const { data } = await axios.get(`${baseUrl}?${qs}`, {
       headers: { "User-Agent": `SincroStock/${config.userId}/Node.js/1.0` },
       timeout: 8000,
     });
-    // Falabella returns errors in data.Head (not data.ErrorResponse)
-    if (data?.Head?.ErrorCode) {
-      return { ok: false, message: `Error Falabella: ${data.Head.ErrorMessage || JSON.stringify(data.Head)}` };
+    // Falabella can return errors in either data.Head or data.ErrorResponse.Head
+    const errCode = data?.Head?.ErrorCode ?? data?.ErrorResponse?.Head?.ErrorCode;
+    if (errCode) {
+      const errMsg = data?.Head?.ErrorMessage ?? data?.ErrorResponse?.Head?.ErrorMessage ?? JSON.stringify(data);
+      return { ok: false, message: `Error Falabella (${errCode}): ${errMsg}` };
     }
     return { ok: true, message: "Conectado — credenciales válidas" };
   } catch (err) {

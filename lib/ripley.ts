@@ -128,6 +128,98 @@ export async function getAllRipleySkus(
   return results;
 }
 
+// ─── Orders (OR11 / OR72 / OR73) ─────────────────────────────────────────────
+
+export interface RipleyOrderLine {
+  orderLineId: string;
+  offerSku: string;       // offer_sku — seller's own SKU
+  productTitle: string;
+  quantity: number;
+  price: number;
+  orderLineState: string;
+  imageUrl: string | null; // product_medias[0].media_url (small type preferred)
+}
+
+export interface RipleyOrder {
+  orderId: string;
+  orderState: string;
+  createdDate: string;
+  currencyCode: string;
+  orderLines: RipleyOrderLine[];
+}
+
+// OR11: List orders with full line detail (product_medias for images)
+export async function getRipleyOrders(
+  apiKey: string,
+  instanceUrl: string,
+  stateCodes?: string, // comma-separated, e.g. "WAITING_ACCEPTANCE,SHIPPING"
+  max = 50
+): Promise<RipleyOrder[]> {
+  const client = getClient(apiKey, instanceUrl);
+  const params: Record<string, string | number> = { max };
+  if (stateCodes) params.order_state_codes = stateCodes;
+
+  const { data } = await client.get("/api/orders", { params });
+  const orders: Record<string, unknown>[] = data?.orders || [];
+
+  return orders.map((o) => {
+    const lines: RipleyOrderLine[] = ((o.order_lines as Record<string, unknown>[]) || []).map((line) => {
+      const medias: Record<string, string>[] = (line.product_medias as Record<string, string>[]) || [];
+      // Prefer "small" type image, fallback to first
+      const img = medias.find((m) => m.type === "small") || medias[0];
+      return {
+        orderLineId: String(line.order_line_id || ""),
+        offerSku: String(line.offer_sku || ""),
+        productTitle: String(line.product_title || ""),
+        quantity: Number(line.quantity) || 0,
+        price: Number(line.price) || 0,
+        orderLineState: String(line.order_line_state || ""),
+        imageUrl: img?.media_url ?? null,
+      };
+    });
+    return {
+      orderId: String(o.order_id || ""),
+      orderState: String(o.order_state || ""),
+      createdDate: String(o.created_date || ""),
+      currencyCode: String(o.currency_iso_code || "CLP"),
+      orderLines: lines,
+    };
+  });
+}
+
+// OR72: List documents attached to an order
+// Returns array of { id, type, file_name }
+export async function getRipleyOrderDocuments(
+  apiKey: string,
+  instanceUrl: string,
+  orderId: string
+): Promise<{ id: number; type: string; fileName: string }[]> {
+  const client = getClient(apiKey, instanceUrl);
+  const { data } = await client.get("/api/orders/documents", {
+    params: { order_id: orderId },
+  });
+  const docs: Record<string, unknown>[] = data?.order_documents || [];
+  return docs.map((d) => ({
+    id: Number(d.id),
+    type: String(d.type || ""),
+    fileName: String(d.file_name || ""),
+  }));
+}
+
+// OR73: Download one document by ID — returns binary Buffer (PDF or ZIP)
+export async function downloadRipleyOrderDocument(
+  apiKey: string,
+  instanceUrl: string,
+  documentId: number
+): Promise<Buffer> {
+  const client = getClient(apiKey, instanceUrl);
+  const response = await client.get("/api/orders/documents/download", {
+    params: { document_ids: String(documentId) },
+    responseType: "arraybuffer",
+  });
+  return Buffer.from(response.data as ArrayBuffer);
+}
+
 // OR11: Poll for new orders (Mirakl doesn't push webhooks to sellers)
 // Returns orders in WAITING_ACCEPTANCE state
 export async function getPendingRipleyOrders(
