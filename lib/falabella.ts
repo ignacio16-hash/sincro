@@ -124,11 +124,19 @@ export async function getAllFalabellaSkus(
     const client = getClient(userId);
     const { data } = await client.get(url);
 
-    const products: Record<string, unknown>[] =
-      data?.SuccessResponse?.Body?.Products?.Product ||
-      data?.Body?.Products?.Product || [];
+    // Falabella wraps response in SuccessResponse or directly in Body
+    const raw =
+      data?.SuccessResponse?.Body?.Products?.Product ??
+      data?.Body?.Products?.Product ?? [];
 
-    if (!Array.isArray(products) || products.length === 0) break;
+    // API returns single object (not array) when there's only one product
+    const products: Record<string, unknown>[] = Array.isArray(raw)
+      ? raw
+      : raw && typeof raw === "object"
+      ? [raw as Record<string, unknown>]
+      : [];
+
+    if (products.length === 0) break;
 
     for (const p of products) {
       const sku = String(p.SellerSku || "");

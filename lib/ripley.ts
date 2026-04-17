@@ -93,6 +93,41 @@ export async function getRipleyStock(
   return qtyData?.quantity ?? 0;
 }
 
+// OF21: List all offers of the shop (paginated)
+// Response: { offers: [{ shop_sku, product_title, quantity }], total_count }
+export async function getAllRipleySkus(
+  apiKey: string,
+  instanceUrl: string
+): Promise<{ sku: string; name: string; quantity: number }[]> {
+  const client = getClient(apiKey, instanceUrl);
+  const results: { sku: string; name: string; quantity: number }[] = [];
+  let offset = 0;
+  const max = 100;
+
+  while (true) {
+    const { data } = await client.get("/api/offers", {
+      params: { max, offset },
+    });
+
+    const offers: Record<string, unknown>[] = data?.offers || [];
+    for (const offer of offers) {
+      const sku = String(offer.shop_sku || "");
+      if (sku) {
+        results.push({
+          sku,
+          name: String(offer.product_title || ""),
+          quantity: Number(offer.quantity) || 0,
+        });
+      }
+    }
+
+    if (offers.length < max) break;
+    offset += max;
+  }
+
+  return results;
+}
+
 // OR11: Poll for new orders (Mirakl doesn't push webhooks to sellers)
 // Returns orders in WAITING_ACCEPTANCE state
 export async function getPendingRipleyOrders(
