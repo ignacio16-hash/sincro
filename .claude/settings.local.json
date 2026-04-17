@@ -5,7 +5,27 @@
       "Bash(npm install *)",
       "Bash(npx prisma *)",
       "Bash(npm run *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(gh auth *)",
+      "Bash(git config *)",
+      "Bash(brew install *)",
+      "Bash(git remote *)",
+      "Bash(git push *)",
+      "Bash(ssh -T git@github.com)",
+      "Bash(ssh-keyscan github.com)",
+      "WebFetch(domain:docs.bsale.dev)",
+      "WebFetch(domain:developers.ecomm.cencosud.com)",
+      "WebFetch(domain:developers.falabella.com)",
+      "WebFetch(domain:developer.mirakl.com)",
+      "WebSearch",
+      "WebFetch(domain:apichile.bsalelab.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:apidoc.bsalelab.com)",
+      "WebFetch(domain:api.sm-co-prod.aws.cencosud.com)",
+      "WebFetch(domain:www.versori.com)",
+      "WebFetch(domain:sellerapi.sellercenter.jumia.com)",
+      "WebFetch(domain:lazada-sellercenter.readme.io)"
     ]
   }
 }

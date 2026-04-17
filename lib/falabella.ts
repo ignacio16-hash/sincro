@@ -1,70 +1,124 @@
 import axios from "axios";
+import crypto from "crypto";
 
-// Falabella Marketplace API v500
+// Falabella Seller Center API
 // Docs: https://developers.falabella.com/v500.0.0/reference
+// Auth: HMAC-SHA256 signed query params (NOT Authorization header)
+// Base URL for Chile: https://sellercenter-api.linio.cl/
 
-const BASE_URL = "https://sellercenter-api.falabella.com";
+const BASE_URLS: Record<string, string> = {
+  CL: "https://sellercenter-api.linio.cl/",
+  PE: "https://sellercenter-api.linio.com.pe/",
+  CO: "https://sellercenter-api.linio.com.co/",
+  MX: "https://sellercenter-api.linio.com.mx/",
+};
 
-function getClient(apiKey: string, sellerId: string) {
+function buildSignature(
+  params: Record<string, string>,
+  apiKey: string
+): string {
+  const sorted = Object.keys(params).sort();
+  const encoded = sorted
+    .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`)
+    .join("&");
+  return crypto.createHmac("sha256", apiKey).update(encoded).digest("hex");
+}
+
+function buildSignedUrl(
+  baseUrl: string,
+  action: string,
+  userId: string,
+  apiKey: string,
+  extra: Record<string, string> = {}
+): string {
+  const timestamp = new Date().toISOString().replace(/\.\d+Z$/, "+0000");
+  const params: Record<string, string> = {
+    Action: action,
+    UserID: userId,
+    Version: "1.0",
+    Timestamp: timestamp,
+    Format: "JSON",
+    ...extra,
+  };
+  params.Signature = buildSignature(params, apiKey);
+  const qs = Object.entries(params)
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    .join("&");
+  return `${baseUrl}?${qs}`;
+}
+
+function getClient(userId: string) {
   return axios.create({
-    baseURL: BASE_URL,
     headers: {
-      Authorization: apiKey,
-      "X-Seller-Id": sellerId,
-      "Content-Type": "application/json",
+      "User-Agent": `SincroStock/${userId}/Node.js/1.0`,
+      "Content-Type": "application/x-www-form-urlencoded",
     },
-    timeout: 15000,
+    timeout: 20000,
   });
 }
 
+// Update stock for a single SKU
+// Falabella uses XML feed via ProductUpdate action
 export async function updateFalabellaStock(
   apiKey: string,
-  sellerId: string,
+  userId: string,
   sku: string,
-  quantity: number
-): Promise<void> {
-  const client = getClient(apiKey, sellerId);
-  await client.put(`/v2/products/${sku}/stock`, {
-    sellable_quantity: quantity,
-  });
+  quantity: number,
+  country = "CL"
+): Promise<string> {
+  const baseUrl = BASE_URLS[country] || BASE_URLS.CL;
+  const url = buildSignedUrl(baseUrl, "ProductUpdate", userId, apiKey);
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Request>
+  <Product>
+    <SellerSku>${sku}</SellerSku>
+    <Quantity>${quantity}</Quantity>
+  </Product>
+</Request>`;
+
+  const client = getClient(userId);
+  const { data } = await client.post(
+    url,
+    `payload=${encodeURIComponent(xml)}`
+  );
+
+  // Returns a FeedID for async processing
+  return data?.FeedID || data?.Body?.FeedID || "";
 }
 
 export async function getFalabellaStock(
   apiKey: string,
-  sellerId: string,
-  sku: string
+  userId: string,
+  sku: string,
+  country = "CL"
 ): Promise<number> {
-  const client = getClient(apiKey, sellerId);
-  const { data } = await client.get(`/v2/products/${sku}`);
-  return data?.stock?.sellable_quantity ?? 0;
+  const baseUrl = BASE_URLS[country] || BASE_URLS.CL;
+  const url = buildSignedUrl(baseUrl, "GetProducts", userId, apiKey, {
+    SellerSku: sku,
+  });
+  const client = getClient(userId);
+  const { data } = await client.get(url);
+  const products = data?.SuccessResponse?.Body?.Products?.Product || [];
+  const product = Array.isArray(products) ? products[0] : products;
+  return parseInt(product?.Quantity || "0", 10);
 }
 
 export async function batchUpdateFalabellaStock(
   apiKey: string,
-  sellerId: string,
-  items: { sku: string; quantity: number }[]
+  userId: string,
+  items: { sku: string; quantity: number }[],
+  country = "CL"
 ): Promise<{ success: string[]; failed: string[] }> {
   const success: string[] = [];
   const failed: string[] = [];
 
-  // Falabella supports batch updates
-  const chunks = [];
-  for (let i = 0; i < items.length; i += 20) {
-    chunks.push(items.slice(i, i + 20));
-  }
-
-  for (const chunk of chunks) {
+  for (const item of items) {
     try {
-      const client = getClient(apiKey, sellerId);
-      await client.put("/v2/products/stock/batch", {
-        products: chunk.map((item) => ({
-          sku: item.sku,
-          sellable_quantity: item.quantity,
-        })),
-      });
-      chunk.forEach((item) => success.push(item.sku));
+      await updateFalabellaStock(apiKey, userId, item.sku, item.quantity, country);
+      success.push(item.sku);
     } catch {
-      chunk.forEach((item) => failed.push(item.sku));
+      failed.push(item.sku);
     }
   }
 

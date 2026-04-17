@@ -1,5 +1,10 @@
 import { prisma } from "./db";
-import { getAllBsaleSkus, discountBsaleStock } from "./bsale";
+import {
+  getAllBsaleSkus,
+  consumeBsaleStock,
+  getBsaleStockByVariantId,
+  resolveSkuToVariantId,
+} from "./bsale";
 import { batchUpdateParisStock } from "./paris";
 import { batchUpdateFalabellaStock } from "./falabella";
 import { batchUpdateRipleyStock } from "./ripley";
@@ -7,9 +12,7 @@ import { batchUpdateRipleyStock } from "./ripley";
 export type Platform = "paris" | "falabella" | "ripley";
 
 async function getCredentials(platform: string) {
-  const cred = await prisma.apiCredential.findUnique({
-    where: { platform },
-  });
+  const cred = await prisma.apiCredential.findUnique({ where: { platform } });
   if (!cred || !cred.isActive) return null;
   return cred.config as Record<string, string>;
 }
@@ -26,7 +29,7 @@ export async function runFullSync(): Promise<{
 
   const bsaleCreds = await getCredentials("bsale");
   if (!bsaleCreds?.accessToken) {
-    await logSync("full_sync", "all", "error", "Bsale credentials not configured");
+    await logSync("full_sync", "all", "error", "Bsale no configurado");
     return { status: "error", synced: 0, errors: ["Bsale no configurado"], duration: 0 };
   }
 
@@ -40,7 +43,7 @@ export async function runFullSync(): Promise<{
     return { status: "error", synced: 0, errors, duration: Date.now() - start };
   }
 
-  // Update DB stock items
+  // Persist stock items in DB
   for (const item of skus) {
     await prisma.stockItem.upsert({
       where: { sku: item.sku },
@@ -65,20 +68,20 @@ export async function runFullSync(): Promise<{
 
   // Sync Paris
   const parisCreds = await getCredentials("paris");
-  if (parisCreds?.apiKey && parisCreds?.sellerId) {
+  if (parisCreds?.apiKey && parisCreds?.sellerId && parisCreds?.baseUrl) {
     try {
       const result = await batchUpdateParisStock(
         parisCreds.apiKey,
         parisCreds.sellerId,
+        parisCreds.baseUrl,
         stockItems
       );
-      if (result.failed.length > 0) {
-        errors.push(`Paris: ${result.failed.length} SKUs fallaron`);
-      }
-      await logSync("full_sync", "paris", result.failed.length === 0 ? "success" : "partial",
+      const status = result.failed.length === 0 ? "success" : "partial";
+      await logSync("full_sync", "paris", status,
         `${result.success.length} ok, ${result.failed.length} fallaron`);
+      if (result.failed.length > 0) errors.push(`Paris: ${result.failed.length} fallaron`);
     } catch (e) {
-      const msg = `Paris sync error: ${(e as Error).message}`;
+      const msg = `Paris: ${(e as Error).message}`;
       errors.push(msg);
       await logSync("full_sync", "paris", "error", msg);
     }
@@ -86,20 +89,20 @@ export async function runFullSync(): Promise<{
 
   // Sync Falabella
   const falabellaCreds = await getCredentials("falabella");
-  if (falabellaCreds?.apiKey && falabellaCreds?.sellerId) {
+  if (falabellaCreds?.apiKey && falabellaCreds?.userId) {
     try {
       const result = await batchUpdateFalabellaStock(
         falabellaCreds.apiKey,
-        falabellaCreds.sellerId,
-        stockItems
+        falabellaCreds.userId,
+        stockItems,
+        falabellaCreds.country || "CL"
       );
-      if (result.failed.length > 0) {
-        errors.push(`Falabella: ${result.failed.length} SKUs fallaron`);
-      }
-      await logSync("full_sync", "falabella", result.failed.length === 0 ? "success" : "partial",
+      const status = result.failed.length === 0 ? "success" : "partial";
+      await logSync("full_sync", "falabella", status,
         `${result.success.length} ok, ${result.failed.length} fallaron`);
+      if (result.failed.length > 0) errors.push(`Falabella: ${result.failed.length} fallaron`);
     } catch (e) {
-      const msg = `Falabella sync error: ${(e as Error).message}`;
+      const msg = `Falabella: ${(e as Error).message}`;
       errors.push(msg);
       await logSync("full_sync", "falabella", "error", msg);
     }
@@ -107,32 +110,33 @@ export async function runFullSync(): Promise<{
 
   // Sync Ripley
   const ripleyCreds = await getCredentials("ripley");
-  if (ripleyCreds?.apiKey) {
+  if (ripleyCreds?.apiKey && ripleyCreds?.instanceUrl) {
     try {
-      const result = await batchUpdateRipleyStock(ripleyCreds.apiKey, stockItems);
-      if (result.failed.length > 0) {
-        errors.push(`Ripley: ${result.failed.length} SKUs fallaron`);
-      }
-      await logSync("full_sync", "ripley", result.failed.length === 0 ? "success" : "partial",
+      const result = await batchUpdateRipleyStock(
+        ripleyCreds.apiKey,
+        ripleyCreds.instanceUrl,
+        stockItems
+      );
+      const status = result.failed.length === 0 ? "success" : "partial";
+      await logSync("full_sync", "ripley", status,
         `${result.success.length} ok, ${result.failed.length} fallaron`);
+      if (result.failed.length > 0) errors.push(`Ripley: ${result.failed.length} fallaron`);
     } catch (e) {
-      const msg = `Ripley sync error: ${(e as Error).message}`;
+      const msg = `Ripley: ${(e as Error).message}`;
       errors.push(msg);
       await logSync("full_sync", "ripley", "error", msg);
     }
   }
 
   const duration = Date.now() - start;
-  const status = errors.length === 0 ? "success" : errors.length < 3 ? "partial" : "error";
+  const overallStatus = errors.length === 0 ? "success" : errors.length < 3 ? "partial" : "error";
+  await logSync("full_sync", "all", overallStatus,
+    `Sync completado: ${synced} SKUs`, { errors, synced }, duration);
 
-  await logSync("full_sync", "all", status, `Sync completado: ${synced} SKUs`, {
-    errors,
-    synced,
-  }, duration);
-
-  return { status, synced, errors, duration };
+  return { status: overallStatus, synced, errors, duration };
 }
 
+// Called when a marketplace receives an order → discount from Bsale
 export async function handleMarketplaceOrder(
   platform: Platform,
   sku: string,
@@ -142,19 +146,36 @@ export async function handleMarketplaceOrder(
   const bsaleCreds = await getCredentials("bsale");
   if (!bsaleCreds?.accessToken) throw new Error("Bsale no configurado");
 
-  const stockItem = await prisma.stockItem.findUnique({ where: { sku } });
-  if (!stockItem?.bsaleVariantId) throw new Error(`SKU ${sku} no encontrado en Bsale`);
+  // Resolve SKU to variantId if not cached
+  let stockItem = await prisma.stockItem.findUnique({ where: { sku } });
 
+  if (!stockItem?.bsaleVariantId) {
+    const variantId = await resolveSkuToVariantId(bsaleCreds.accessToken, sku);
+    if (!variantId) throw new Error(`SKU ${sku} no encontrado en Bsale`);
+
+    stockItem = await prisma.stockItem.upsert({
+      where: { sku },
+      update: { bsaleVariantId: String(variantId) },
+      create: { sku, bsaleVariantId: String(variantId), bsaleStock: 0 },
+    });
+  }
+
+  const variantId = parseInt(stockItem.bsaleVariantId!);
   const previousQty = stockItem.bsaleStock;
-  const result = await discountBsaleStock(
+
+  // Use Bsale stock consumption endpoint (correct way to discount stock)
+  await consumeBsaleStock(
     bsaleCreds.accessToken,
-    parseInt(stockItem.bsaleVariantId),
-    quantity
+    variantId,
+    quantity,
+    bsaleCreds.officeId ? parseInt(bsaleCreds.officeId) : undefined,
+    `Venta ${platform} orden ${orderId}`
   );
 
+  const newQty = Math.max(0, previousQty - quantity);
   await prisma.stockItem.update({
     where: { sku },
-    data: { bsaleStock: result.newQty },
+    data: { bsaleStock: newQty },
   });
 
   await prisma.syncEvent.create({
@@ -164,46 +185,77 @@ export async function handleMarketplaceOrder(
       sku,
       quantity,
       previousQty,
-      newQty: result.newQty,
+      newQty,
       orderId,
       processed: true,
     },
   });
 
   await logSync("webhook", platform, "success",
-    `Orden ${orderId}: ${sku} -${quantity} → Bsale (${previousQty} → ${result.newQty})`);
+    `Orden ${orderId}: ${sku} -${quantity} (${previousQty} → ${newQty})`);
 }
 
+// Called when Bsale webhook fires for a stock change
+// NOTE: Bsale webhook does NOT include the new quantity in the payload.
+// We receive variantId + officeId, then must fetch the current quantity.
 export async function handleBsaleStockChange(
-  sku: string,
   variantId: number,
-  newQty: number
+  officeId: number,
+  accessToken: string
 ): Promise<void> {
-  await prisma.stockItem.upsert({
-    where: { sku },
-    update: { bsaleStock: newQty, bsaleVariantId: String(variantId), lastSyncAt: new Date() },
-    create: { sku, bsaleStock: newQty, bsaleVariantId: String(variantId), lastSyncAt: new Date() },
+  // Fetch the actual current stock from Bsale
+  const stockItems = await getBsaleStockByVariantId(
+    accessToken,
+    variantId,
+    officeId || undefined
+  );
+
+  // Sum all offices or use the specific one
+  const newQty = officeId
+    ? stockItems.find((s) => String(s.office.id) === String(officeId))?.quantityAvailable ?? 0
+    : stockItems.reduce((sum, s) => sum + (s.quantityAvailable || 0), 0);
+
+  // Find stockItem by variantId
+  const stockItem = await prisma.stockItem.findFirst({
+    where: { bsaleVariantId: String(variantId) },
   });
 
-  const stockItem = [{ sku, quantity: newQty }];
+  if (!stockItem) {
+    // Unknown variant, skip
+    return;
+  }
 
+  await prisma.stockItem.update({
+    where: { sku: stockItem.sku },
+    data: { bsaleStock: newQty, lastSyncAt: new Date() },
+  });
+
+  const updatedItem = [{ sku: stockItem.sku, quantity: newQty }];
+
+  // Push updated stock to all marketplaces
   const parisCreds = await getCredentials("paris");
-  if (parisCreds?.apiKey && parisCreds?.sellerId) {
-    await batchUpdateParisStock(parisCreds.apiKey, parisCreds.sellerId, stockItem).catch(() => {});
+  if (parisCreds?.apiKey && parisCreds?.sellerId && parisCreds?.baseUrl) {
+    await batchUpdateParisStock(
+      parisCreds.apiKey, parisCreds.sellerId, parisCreds.baseUrl, updatedItem
+    ).catch(() => {});
   }
 
   const falabellaCreds = await getCredentials("falabella");
-  if (falabellaCreds?.apiKey && falabellaCreds?.sellerId) {
-    await batchUpdateFalabellaStock(falabellaCreds.apiKey, falabellaCreds.sellerId, stockItem).catch(() => {});
+  if (falabellaCreds?.apiKey && falabellaCreds?.userId) {
+    await batchUpdateFalabellaStock(
+      falabellaCreds.apiKey, falabellaCreds.userId, updatedItem, falabellaCreds.country || "CL"
+    ).catch(() => {});
   }
 
   const ripleyCreds = await getCredentials("ripley");
-  if (ripleyCreds?.apiKey) {
-    await batchUpdateRipleyStock(ripleyCreds.apiKey, stockItem).catch(() => {});
+  if (ripleyCreds?.apiKey && ripleyCreds?.instanceUrl) {
+    await batchUpdateRipleyStock(
+      ripleyCreds.apiKey, ripleyCreds.instanceUrl, updatedItem
+    ).catch(() => {});
   }
 
   await logSync("webhook", "bsale", "success",
-    `Stock Bsale actualizado: ${sku} → ${newQty}`);
+    `Stock actualizado: ${stockItem.sku} → ${newQty}`);
 }
 
 async function logSync(

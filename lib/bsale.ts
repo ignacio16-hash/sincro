@@ -1,5 +1,9 @@
 import axios from "axios";
 
+// Bsale API
+// Docs: https://apichile.bsalelab.com
+// Auth: access_token header (NOT Authorization Bearer)
+
 const BASE_URL = "https://api.bsale.io/v1";
 
 function getClient(accessToken: string) {
@@ -13,90 +17,113 @@ function getClient(accessToken: string) {
   });
 }
 
-export interface BsaleStock {
-  id: number;
+export interface BsaleStockItem {
   quantity: number;
-  variantId: number;
-  officeId: number;
+  quantityReserved: number;
+  quantityAvailable: number;
+  variant: { href: string; id: string };
+  office: { href: string; id: string };
 }
 
 export interface BsaleVariant {
   id: number;
-  sku: string;
+  code: string; // SKU
   description: string;
-  stocksCount: number;
 }
 
+// GET all variants (paginated)
 export async function getBsaleVariants(
   accessToken: string,
   limit = 50,
   offset = 0
-): Promise<{ list: BsaleVariant[]; count: number; total: number }> {
+): Promise<{ list: BsaleVariant[]; count: number }> {
   const client = getClient(accessToken);
   const { data } = await client.get("/variants.json", {
     params: { limit, offset },
   });
-  return data;
+  return { list: data.list || [], count: data.count || 0 };
 }
 
-export async function getBsaleStockByVariant(
+// GET stock for a SKU (by code)
+export async function getBsaleStockBySku(
   accessToken: string,
-  variantId: number
-): Promise<BsaleStock[]> {
+  sku: string,
+  officeId?: number
+): Promise<BsaleStockItem[]> {
   const client = getClient(accessToken);
-  const { data } = await client.get(
-    `/stocks.json?variantid=${variantId}&limit=100`
-  );
-  return data.list || [];
+  const params: Record<string, string | number> = { code: sku, limit: 50 };
+  if (officeId) params.officeid = officeId;
+  const { data } = await client.get("/stocks.json", { params });
+  return data.items || [];
 }
 
+// GET stock by variant ID
+export async function getBsaleStockByVariantId(
+  accessToken: string,
+  variantId: number,
+  officeId?: number
+): Promise<BsaleStockItem[]> {
+  const client = getClient(accessToken);
+  const params: Record<string, string | number> = { variantid: variantId, limit: 50 };
+  if (officeId) params.officeid = officeId;
+  const { data } = await client.get("/stocks.json", { params });
+  return data.items || [];
+}
+
+// GET total available stock for a variant
 export async function getBsaleTotalStock(
   accessToken: string,
   variantId: number,
   officeId?: number
 ): Promise<number> {
-  const stocks = await getBsaleStockByVariant(accessToken, variantId);
+  const items = await getBsaleStockByVariantId(accessToken, variantId, officeId);
   if (officeId) {
-    const found = stocks.find((s) => s.officeId === officeId);
-    return found?.quantity ?? 0;
+    const found = items.find((s) => String(s.office.id) === String(officeId));
+    return found?.quantityAvailable ?? 0;
   }
-  return stocks.reduce((sum, s) => sum + (s.quantity || 0), 0);
+  return items.reduce((sum, s) => sum + (s.quantityAvailable || 0), 0);
 }
 
-export async function updateBsaleStock(
-  accessToken: string,
-  stockId: number,
-  quantity: number
-): Promise<void> {
-  const client = getClient(accessToken);
-  await client.put(`/stocks/${stockId}.json`, { quantity });
-}
-
-export async function discountBsaleStock(
+// Discount stock in Bsale using consumption (removes stock)
+// Called when a marketplace receives an order
+export async function consumeBsaleStock(
   accessToken: string,
   variantId: number,
-  amount: number,
-  officeId?: number
-): Promise<{ success: boolean; newQty: number; stockId: number }> {
-  const stocks = await getBsaleStockByVariant(accessToken, variantId);
+  quantity: number,
+  officeId?: number,
+  note = "Venta marketplace"
+): Promise<void> {
+  const client = getClient(accessToken);
+  const detail: Record<string, unknown> = {
+    variantId,
+    quantity,
+  };
+  if (officeId) detail.officeId = officeId;
 
-  let target: BsaleStock | undefined;
-  if (officeId) {
-    target = stocks.find((s) => s.officeId === officeId);
-  } else {
-    target = stocks.reduce((max, s) =>
-      (s.quantity || 0) > (max.quantity || 0) ? s : max
-    );
-  }
-
-  if (!target) throw new Error(`No stock found for variantId ${variantId}`);
-
-  const newQty = Math.max(0, (target.quantity || 0) - amount);
-  await updateBsaleStock(accessToken, target.id, newQty);
-
-  return { success: true, newQty, stockId: target.id };
+  await client.post("/stocks/consumptions.json", {
+    officeId: officeId || 1,
+    note,
+    details: [detail],
+  });
 }
 
+// Add stock in Bsale using reception
+export async function receiveBsaleStock(
+  accessToken: string,
+  variantId: number,
+  quantity: number,
+  officeId = 1,
+  note = "Recepción sync"
+): Promise<void> {
+  const client = getClient(accessToken);
+  await client.post("/stocks/receptions.json", {
+    officeId,
+    note,
+    details: [{ variantId, quantity, cost: 0 }],
+  });
+}
+
+// Get all SKUs with current stock (full catalog scan)
 export async function getAllBsaleSkus(
   accessToken: string
 ): Promise<{ sku: string; variantId: number; name: string; stock: number }[]> {
@@ -109,10 +136,10 @@ export async function getAllBsaleSkus(
     if (!list || list.length === 0) break;
 
     for (const variant of list) {
-      if (!variant.sku) continue;
+      if (!variant.code) continue;
       const stock = await getBsaleTotalStock(accessToken, variant.id);
       results.push({
-        sku: variant.sku,
+        sku: variant.code,
         variantId: variant.id,
         name: variant.description,
         stock,
@@ -124,4 +151,17 @@ export async function getAllBsaleSkus(
   }
 
   return results;
+}
+
+// Resolve SKU string → variantId using the variants endpoint
+export async function resolveSkuToVariantId(
+  accessToken: string,
+  sku: string
+): Promise<number | null> {
+  const client = getClient(accessToken);
+  const { data } = await client.get("/variants.json", {
+    params: { code: sku, limit: 1 },
+  });
+  const first = (data.list || [])[0];
+  return first ? first.id : null;
 }
