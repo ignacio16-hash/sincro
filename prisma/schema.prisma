@@ -1,0 +1,56 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model ApiCredential {
+  id        String   @id @default(cuid())
+  platform  String   @unique // bsale, paris, falabella, ripley
+  config    Json
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model StockItem {
+  id             String    @id @default(cuid())
+  sku            String    @unique
+  name           String?
+  bsaleStock     Int       @default(0)
+  bsaleVariantId String?
+  parisStock     Int?
+  falabellaStock Int?
+  ripleyStock    Int?
+  lastSyncAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+model SyncLog {
+  id        String   @id @default(cuid())
+  type      String   // full_sync, webhook, manual
+  platform  String   // bsale, paris, falabella, ripley, all
+  status    String   // success, error, partial
+  message   String?
+  details   Json?
+  duration  Int?
+  createdAt DateTime @default(now())
+}
+
+model SyncEvent {
+  id          String   @id @default(cuid())
+  source      String   // bsale, paris, falabella, ripley
+  eventType   String   // stock_change, order
+  sku         String
+  quantity    Int
+  previousQty Int?
+  newQty      Int?
+  orderId     String?
+  rawPayload  Json?
+  processed   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
