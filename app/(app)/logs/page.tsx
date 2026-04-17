@@ -9,6 +9,7 @@ interface Log {
   platform: string;
   status: string;
   message: string | null;
+  details: { failed?: string[]; errors?: string[]; synced?: number } | null;
   duration: number | null;
   createdAt: string;
 }
@@ -41,6 +42,7 @@ export default function LogsPage() {
   const [platform, setPlatform] = useState("");
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -62,6 +64,20 @@ export default function LogsPage() {
   useEffect(() => {
     setPage(1);
   }, [platform, status]);
+
+  function toggleExpand(id: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function hasFailed(log: Log): boolean {
+    const failed = log.details?.failed;
+    return Array.isArray(failed) && failed.length > 0;
+  }
 
   return (
     <div className="p-8">
@@ -112,6 +128,7 @@ export default function LogsPage() {
           <table className="w-full">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-100">
+                <th className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wider px-6 py-4 w-8" />
                 <th className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wider px-6 py-4">Estado</th>
                 <th className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wider px-6 py-4">Tipo</th>
                 <th className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wider px-6 py-4">Plataforma</th>
@@ -124,7 +141,7 @@ export default function LogsPage() {
               {loading ? (
                 Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i}>
-                    {Array.from({ length: 6 }).map((_, j) => (
+                    {Array.from({ length: 7 }).map((_, j) => (
                       <td key={j} className="px-6 py-4">
                         <div className="h-4 bg-slate-100 rounded animate-pulse" />
                       </td>
@@ -133,36 +150,71 @@ export default function LogsPage() {
                 ))
               ) : logs.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-16 text-slate-400">
+                  <td colSpan={7} className="text-center py-16 text-slate-400">
                     Sin registros para los filtros seleccionados
                   </td>
                 </tr>
               ) : (
                 logs.map((log) => (
-                  <tr key={log.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4">
-                      <span className={`inline-block text-xs font-medium px-2.5 py-1 rounded-full ${statusColors[log.status] || "bg-slate-100 text-slate-600"}`}>
-                        {log.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="text-sm text-slate-700">{typeLabels[log.type] || log.type}</span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="text-sm font-medium text-slate-800">{platformLabels[log.platform] || log.platform}</span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="text-sm text-slate-600 max-w-sm truncate block">{log.message || "—"}</span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="text-xs text-slate-400">
-                        {log.duration ? `${(log.duration / 1000).toFixed(1)}s` : "—"}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="text-xs text-slate-400 whitespace-nowrap">{formatDate(log.createdAt)}</span>
-                    </td>
-                  </tr>
+                  <>
+                    <tr
+                      key={log.id}
+                      className={`transition-colors ${hasFailed(log) ? "cursor-pointer hover:bg-slate-50" : ""}`}
+                      onClick={() => hasFailed(log) && toggleExpand(log.id)}
+                    >
+                      {/* Expand chevron */}
+                      <td className="px-3 py-4 w-8 text-center">
+                        {hasFailed(log) && (
+                          <span className={`text-slate-400 text-xs transition-transform inline-block ${expanded.has(log.id) ? "rotate-90" : ""}`}>
+                            ▶
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-block text-xs font-medium px-2.5 py-1 rounded-full ${statusColors[log.status] || "bg-slate-100 text-slate-600"}`}>
+                          {log.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="text-sm text-slate-700">{typeLabels[log.type] || log.type}</span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="text-sm font-medium text-slate-800">{platformLabels[log.platform] || log.platform}</span>
+                      </td>
+                      <td className="px-6 py-4 max-w-sm">
+                        <span className="text-sm text-slate-600 truncate block">{log.message || "—"}</span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="text-xs text-slate-400">
+                          {log.duration ? `${(log.duration / 1000).toFixed(1)}s` : "—"}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="text-xs text-slate-400 whitespace-nowrap">{formatDate(log.createdAt)}</span>
+                      </td>
+                    </tr>
+
+                    {/* Expandable failed SKUs row */}
+                    {hasFailed(log) && expanded.has(log.id) && (
+                      <tr key={`${log.id}-detail`} className="bg-red-50">
+                        <td colSpan={7} className="px-8 py-3">
+                          <p className="text-xs font-semibold text-red-700 mb-2">
+                            SKUs con falla ({log.details!.failed!.length}):
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {log.details!.failed!.map((sku) => (
+                              <span
+                                key={sku}
+                                className="font-mono text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded border border-red-200"
+                              >
+                                {sku}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 ))
               )}
             </tbody>

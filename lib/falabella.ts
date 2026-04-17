@@ -117,10 +117,11 @@ export async function getAllFalabellaSkus(
   const limit = 100;
 
   while (true) {
-    const url = buildSignedUrl(baseUrl, "GetProducts", userId, apiKey, {
-      Limit: String(limit),
-      Offset: String(offset),
-    });
+    // Do NOT include Offset=0: Falabella's server skips default-value params
+    // when computing the expected signature → including it causes E007 mismatch.
+    const extra: Record<string, string> = { Limit: String(limit) };
+    if (offset > 0) extra.Offset = String(offset);
+    const url = buildSignedUrl(baseUrl, "GetProducts", userId, apiKey, extra);
     const client = getClient(userId);
     const { data } = await client.get(url);
 
@@ -185,4 +186,61 @@ export async function batchUpdateFalabellaStock(
   }
 
   return { success, failed };
+}
+
+// Poll for pending Falabella orders (GetOrders action)
+// Used as a backup to webhooks — Ripley needs full polling, Falabella may use both.
+export async function getFalabellaOrders(
+  apiKey: string,
+  userId: string,
+  createdAfter?: string, // RFC 3339 e.g. "2026-04-17T00:00:00+00:00"
+  country = "CL"
+): Promise<{ orderId: string; sku: string; quantity: number }[]> {
+  const baseUrl = BASE_URLS[country] || BASE_URLS.CL;
+  const extra: Record<string, string> = { Limit: "50", Status: "pending" };
+  if (createdAfter) extra.CreatedAfter = createdAfter;
+  const url = buildSignedUrl(baseUrl, "GetOrders", userId, apiKey, extra);
+  const client = getClient(userId);
+  const { data } = await client.get(url);
+
+  const errorCode =
+    data?.Head?.ErrorCode ?? data?.SuccessResponse?.Head?.ErrorCode;
+  if (errorCode) {
+    const msg =
+      data?.Head?.ErrorMessage ??
+      data?.SuccessResponse?.Head?.ErrorMessage ??
+      JSON.stringify(data);
+    throw new Error(`Falabella GetOrders error ${errorCode}: ${msg}`);
+  }
+
+  const raw =
+    data?.SuccessResponse?.Body?.Orders?.Order ??
+    data?.Body?.Orders?.Order;
+
+  if (raw == null) return [];
+
+  const orders: Record<string, unknown>[] = Array.isArray(raw)
+    ? raw
+    : typeof raw === "object"
+    ? [raw as Record<string, unknown>]
+    : [];
+
+  const results: { orderId: string; sku: string; quantity: number }[] = [];
+  for (const order of orders) {
+    const orderId = String(order.OrderId || order.orderId || "");
+    if (!orderId) continue;
+    const rawItems =
+      (order as Record<string, Record<string, unknown>>).OrderItems?.OrderItem;
+    if (!rawItems) continue;
+    const items: Record<string, unknown>[] = Array.isArray(rawItems)
+      ? rawItems
+      : [rawItems as Record<string, unknown>];
+    for (const item of items) {
+      const sku = String(item.SellerSku || item.seller_sku || "");
+      const qty = parseInt(String(item.Quantity || item.quantity || "1"), 10);
+      if (sku) results.push({ orderId, sku, quantity: qty });
+    }
+  }
+
+  return results;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { formatDate } from "@/lib/utils";
 
 interface DashboardData {
@@ -18,6 +18,13 @@ interface DashboardData {
     duration: number | null;
   }[];
   platforms: { platform: string; isActive: boolean }[];
+}
+
+interface ProgressLine {
+  stage: string;
+  message: string;
+  percent: number;
+  status?: string;
 }
 
 const platformLabels: Record<string, string> = {
@@ -40,10 +47,27 @@ const statusColors: Record<string, string> = {
   partial: "bg-amber-100 text-amber-800",
 };
 
+const progressStatusIcon: Record<string, string> = {
+  ok: "✓",
+  partial: "⚠",
+  error: "✗",
+  skipped: "—",
+};
+
+const progressStatusColor: Record<string, string> = {
+  ok: "text-emerald-600",
+  partial: "text-amber-600",
+  error: "text-red-600",
+  skipped: "text-slate-400",
+};
+
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [syncing, setSyncing] = useState(false);
-  const [syncResult, setSyncResult] = useState<string | null>(null);
+  const [syncResult, setSyncResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [progressLines, setProgressLines] = useState<ProgressLine[]>([]);
+  const [currentPercent, setCurrentPercent] = useState(0);
+  const esRef = useRef<EventSource | null>(null);
 
   async function load() {
     const res = await fetch("/api/dashboard");
@@ -57,23 +81,71 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, []);
 
-  async function handleManualSync() {
+  // Cleanup EventSource on unmount
+  useEffect(() => {
+    return () => { esRef.current?.close(); };
+  }, []);
+
+  function handleManualSync() {
+    if (syncing) return;
     setSyncing(true);
     setSyncResult(null);
-    try {
-      const res = await fetch("/api/sync", { method: "POST" });
-      const json = await res.json();
-      setSyncResult(
-        json.status === "success"
-          ? `Sync completado: ${json.synced} SKUs en ${(json.duration / 1000).toFixed(1)}s`
-          : `Sync con errores: ${json.errors?.join(", ")}`
-      );
-      load();
-    } catch {
-      setSyncResult("Error al iniciar sync");
-    } finally {
+    setProgressLines([]);
+    setCurrentPercent(0);
+
+    const es = new EventSource("/api/sync/stream");
+    esRef.current = es;
+
+    es.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+
+        if (data.type === "done") {
+          setSyncing(false);
+          es.close();
+          load();
+          return;
+        }
+
+        if (data.type === "error") {
+          setSyncing(false);
+          setSyncResult({ ok: false, message: data.message || "Error desconocido" });
+          es.close();
+          return;
+        }
+
+        // SyncProgressEvent
+        if (typeof data.percent === "number") {
+          setCurrentPercent(data.percent);
+          if (data.stage !== "init") {
+            setProgressLines((prev) => {
+              // Replace the last line for the same stage (update in-place)
+              const existing = prev.findIndex((l) => l.stage === data.stage);
+              if (existing >= 0) {
+                const next = [...prev];
+                next[existing] = data;
+                return next;
+              }
+              return [...prev, data];
+            });
+          }
+          if (data.percent === 100 && data.status) {
+            setSyncResult({
+              ok: data.status !== "error",
+              message: data.message,
+            });
+          }
+        }
+      } catch {
+        // ignore parse errors
+      }
+    };
+
+    es.onerror = () => {
       setSyncing(false);
-    }
+      setSyncResult({ ok: false, message: "Error de conexión al stream de sync" });
+      es.close();
+    };
   }
 
   if (!data) {
@@ -91,7 +163,7 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
           <p className="text-slate-500 text-sm mt-1">
-            Sincronización automática cada 15 minutos
+            Sincronización automática cada 15 minutos · Ventas detectadas cada 2 minutos
           </p>
         </div>
         <button
@@ -112,13 +184,53 @@ export default function DashboardPage() {
         </button>
       </div>
 
-      {syncResult && (
+      {/* Real-time progress panel */}
+      {syncing && (
+        <div className="mb-6 bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-semibold text-slate-700">Sincronizando en tiempo real</p>
+            <span className="text-sm font-bold text-indigo-600">{currentPercent}%</span>
+          </div>
+          {/* Progress bar */}
+          <div className="w-full bg-slate-100 rounded-full h-2 mb-4">
+            <div
+              className="bg-indigo-500 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${currentPercent}%` }}
+            />
+          </div>
+          {/* Stage lines */}
+          <div className="space-y-1.5">
+            {progressLines.map((line, i) => (
+              <div key={i} className="flex items-center gap-2 text-sm">
+                {line.status ? (
+                  <span className={`font-bold w-4 text-center ${progressStatusColor[line.status] || "text-slate-400"}`}>
+                    {progressStatusIcon[line.status] || "·"}
+                  </span>
+                ) : (
+                  <span className="w-4 flex justify-center">
+                    <span className="w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin inline-block" />
+                  </span>
+                )}
+                <span className={line.status ? "text-slate-600" : "text-slate-800 font-medium"}>
+                  {line.message}
+                </span>
+              </div>
+            ))}
+            {progressLines.length === 0 && (
+              <p className="text-sm text-slate-400">Iniciando...</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Final result message */}
+      {!syncing && syncResult && (
         <div className={`mb-6 p-4 rounded-xl text-sm font-medium ${
-          syncResult.includes("Error") || syncResult.includes("error")
-            ? "bg-red-50 text-red-700 border border-red-200"
-            : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+          syncResult.ok
+            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+            : "bg-red-50 text-red-700 border border-red-200"
         }`}>
-          {syncResult}
+          {syncResult.message}
         </div>
       )}
 
@@ -174,7 +286,9 @@ export default function DashboardPage() {
       {/* Webhook URLs */}
       <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 mb-8">
         <h2 className="font-semibold text-slate-900 mb-1">URLs de Webhooks</h2>
-        <p className="text-slate-500 text-sm mb-4">Configura estas URLs en cada marketplace para recibir notificaciones de órdenes:</p>
+        <p className="text-slate-500 text-sm mb-4">
+          Configura estas URLs en cada marketplace. Ripley y Falabella también son detectados por polling automático cada 2 min.
+        </p>
         <div className="space-y-2">
           {[
             { label: "Bsale (cambios de stock)", path: "/api/webhooks/bsale" },
