@@ -67,9 +67,11 @@ async function testFalabella(config: Record<string, string>): Promise<TestResult
     Format: "JSON",
     Limit: "1",
   };
+  // Sign raw values (no URL-encoding) — per Falabella docs the signing string
+  // uses plain key=value pairs. URL-encoding is only for the HTTP query string.
   const sorted = Object.keys(params).sort();
-  const encoded = sorted.map(k => `${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`).join("&");
-  params.Signature = crypto.createHmac("sha256", config.apiKey).update(encoded).digest("hex");
+  const toSign = sorted.map(k => `${k}=${params[k]}`).join("&");
+  params.Signature = crypto.createHmac("sha256", config.apiKey).update(toSign).digest("hex");
   const qs = Object.entries(params).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join("&");
   try {
     const { data } = await axios.get(`${baseUrl}?${qs}`, {

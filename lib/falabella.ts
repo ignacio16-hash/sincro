@@ -17,11 +17,12 @@ function buildSignature(
   params: Record<string, string>,
   apiKey: string
 ): string {
+  // Sign raw (unencoded) values — per Falabella docs the string to sign uses
+  // plain key=value pairs, NOT percent-encoded. URL-encoding happens only in
+  // the final HTTP query string, not in the signing step.
   const sorted = Object.keys(params).sort();
-  const encoded = sorted
-    .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`)
-    .join("&");
-  return crypto.createHmac("sha256", apiKey).update(encoded).digest("hex");
+  const toSign = sorted.map((k) => `${k}=${params[k]}`).join("&");
+  return crypto.createHmac("sha256", apiKey).update(toSign).digest("hex");
 }
 
 function buildSignedUrl(
