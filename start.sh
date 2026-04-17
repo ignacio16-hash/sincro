@@ -1,14 +1,12 @@
 #!/bin/sh
-set -e
 
-echo "[start] Checking DATABASE_URL..."
 if [ -z "$DATABASE_URL" ]; then
-  echo "[start] ERROR: DATABASE_URL is not set. Add a PostgreSQL plugin in Railway and link it to this service."
-  exit 1
+  echo "[SincroStock] WARNING: DATABASE_URL is not set. The app will start but DB features will not work."
+  echo "[SincroStock] Add a PostgreSQL plugin in Railway and link DATABASE_URL to this service."
+else
+  echo "[SincroStock] Running prisma db push..."
+  npx prisma db push --accept-data-loss || echo "[SincroStock] WARNING: prisma db push failed — app will start anyway"
 fi
 
-echo "[start] Running prisma db push..."
-npx prisma db push --accept-data-loss
-
-echo "[start] Starting Next.js on port ${PORT:-3000}..."
-exec npm start
+echo "[SincroStock] Starting Next.js on port ${PORT:-3000}..."
+exec node_modules/.bin/next start -p "${PORT:-3000}"
