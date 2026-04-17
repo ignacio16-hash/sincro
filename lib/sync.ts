@@ -35,7 +35,8 @@ export async function runFullSync(): Promise<{
 
   let skus: { sku: string; variantId: number; name: string; stock: number }[] = [];
   try {
-    skus = await getAllBsaleSkus(bsaleCreds.accessToken);
+    const officeId = bsaleCreds.officeId ? parseInt(bsaleCreds.officeId) : undefined;
+    skus = await getAllBsaleSkus(bsaleCreds.accessToken, officeId);
   } catch (e) {
     const msg = `Error obteniendo SKUs de Bsale: ${(e as Error).message}`;
     errors.push(msg);

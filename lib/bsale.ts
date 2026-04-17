@@ -125,19 +125,20 @@ export async function receiveBsaleStock(
 
 // Get all SKUs with current stock (full catalog scan)
 export async function getAllBsaleSkus(
-  accessToken: string
+  accessToken: string,
+  officeId?: number
 ): Promise<{ sku: string; variantId: number; name: string; stock: number }[]> {
   const results: { sku: string; variantId: number; name: string; stock: number }[] = [];
   let offset = 0;
   const limit = 50;
 
   while (true) {
-    const { list, count } = await getBsaleVariants(accessToken, limit, offset);
+    const { list } = await getBsaleVariants(accessToken, limit, offset);
     if (!list || list.length === 0) break;
 
     for (const variant of list) {
       if (!variant.code) continue;
-      const stock = await getBsaleTotalStock(accessToken, variant.id);
+      const stock = await getBsaleTotalStock(accessToken, variant.id, officeId);
       results.push({
         sku: variant.code,
         variantId: variant.id,
@@ -146,8 +147,9 @@ export async function getAllBsaleSkus(
       });
     }
 
+    // Stop when the page returned fewer items than requested (last page)
+    if (list.length < limit) break;
     offset += limit;
-    if (offset >= count) break;
   }
 
   return results;
