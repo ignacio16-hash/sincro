@@ -32,7 +32,8 @@ function buildSignedUrl(
   apiKey: string,
   extra: Record<string, string> = {}
 ): string {
-  const timestamp = new Date().toISOString().replace(/\.\d+Z$/, "+0000");
+  // RFC 3339 format with colon in timezone offset: 2026-04-17T12:00:00+00:00
+  const timestamp = new Date().toISOString().replace(/\.\d+Z$/, "+00:00");
   const params: Record<string, string> = {
     Action: action,
     UserID: userId,

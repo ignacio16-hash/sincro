@@ -58,7 +58,8 @@ async function testFalabella(config: Record<string, string>): Promise<TestResult
     MX: "https://sellercenter-api.falabella.com/",
   };
   const baseUrl = BASE_URLS[config.country || "CL"] || BASE_URLS.CL;
-  const timestamp = new Date().toISOString().replace(/\.\d+Z$/, "+0000");
+  // RFC 3339 format with colon in timezone offset: 2026-04-17T12:00:00+00:00
+  const timestamp = new Date().toISOString().replace(/\.\d+Z$/, "+00:00");
   const params: Record<string, string> = {
     Action: "GetProducts",
     UserID: config.userId,
@@ -67,8 +68,7 @@ async function testFalabella(config: Record<string, string>): Promise<TestResult
     Format: "JSON",
     Limit: "1",
   };
-  // Sign raw values (no URL-encoding) — per Falabella docs the signing string
-  // uses plain key=value pairs. URL-encoding is only for the HTTP query string.
+  // Sign raw (unencoded) values sorted alphabetically — per Falabella docs
   const sorted = Object.keys(params).sort();
   const toSign = sorted.map(k => `${k}=${params[k]}`).join("&");
   params.Signature = crypto.createHmac("sha256", config.apiKey).update(toSign).digest("hex");
@@ -78,8 +78,10 @@ async function testFalabella(config: Record<string, string>): Promise<TestResult
       headers: { "User-Agent": `SincroStock/${config.userId}/Node.js/1.0` },
       timeout: 8000,
     });
-    const isError = data?.ErrorResponse;
-    if (isError) return { ok: false, message: `Error Falabella: ${data.ErrorResponse.Body?.Message || JSON.stringify(data.ErrorResponse)}` };
+    // Falabella returns errors in data.Head (not data.ErrorResponse)
+    if (data?.Head?.ErrorCode) {
+      return { ok: false, message: `Error Falabella: ${data.Head.ErrorMessage || JSON.stringify(data.Head)}` };
+    }
     return { ok: true, message: "Conectado — credenciales válidas" };
   } catch (err) {
     if (axios.isAxiosError(err)) {
