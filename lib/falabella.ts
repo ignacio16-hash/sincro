@@ -105,58 +105,52 @@ export async function getFalabellaStock(
   return parseInt(product?.Quantity || "0", 10);
 }
 
-// Fetch SKUs via FetchStock — requires fewer permissions than GetProducts.
-// FetchStock returns: SellerSku + Available (paginated).
+// Fetch SKUs via FetchStock — bulk endpoint, NO pagination params (per docs sample).
+// Returns all SellerSku + Available in one call.
 async function getFalabellaSkusViaFetchStock(
   apiKey: string,
   userId: string,
   country: string
 ): Promise<{ sku: string; name: string; quantity: number }[]> {
   const baseUrl = BASE_URLS[country] || BASE_URLS.CL;
-  const results: { sku: string; name: string; quantity: number }[] = [];
-  let offset = 0;
-  const limit = 100;
   const client = getClient(userId);
 
-  while (true) {
-    const extra: Record<string, string> = { Limit: String(limit) };
-    if (offset > 0) extra.Offset = String(offset);
-    const url = buildSignedUrl(baseUrl, "FetchStock", userId, apiKey, extra);
-    const { data } = await client.get(url);
+  // FetchStock: ONLY base params (Action, UserID, Version, Timestamp, Format) + Signature.
+  // Any extra param (Limit, Offset, Filter) causes E009/signature issues in this endpoint.
+  const url = buildSignedUrl(baseUrl, "FetchStock", userId, apiKey);
+  const { data } = await client.get(url);
 
-    const errorCode = data?.Head?.ErrorCode ?? data?.ErrorResponse?.Head?.ErrorCode;
-    if (errorCode) {
-      const msg = data?.Head?.ErrorMessage ?? data?.ErrorResponse?.Head?.ErrorMessage ?? JSON.stringify(data);
-      throw new Error(`Falabella FetchStock error ${errorCode}: ${msg}`);
-    }
-
-    // Response: SuccessResponse.Body.Skus.Sku or Body.Skus.Sku
-    const raw =
-      data?.SuccessResponse?.Body?.Skus?.Sku ??
-      data?.Body?.Skus?.Sku ??
-      data?.SuccessResponse?.Body?.Products?.Product ??
-      data?.Body?.Products?.Product;
-    if (raw == null) break;
-
-    const items: Record<string, unknown>[] = Array.isArray(raw)
-      ? raw
-      : typeof raw === "object" ? [raw as Record<string, unknown>] : [];
-
-    for (const item of items) {
-      const sku = String(item.SellerSku || item.ShopSku || "");
-      if (sku) {
-        results.push({
-          sku,
-          name: String(item.Name || ""),
-          quantity: parseInt(String(item.Available ?? item.Quantity ?? "0"), 10),
-        });
-      }
-    }
-
-    if (items.length < limit) break;
-    offset += limit;
+  const errorCode = data?.Head?.ErrorCode ?? data?.ErrorResponse?.Head?.ErrorCode;
+  if (errorCode) {
+    const msg = data?.Head?.ErrorMessage ?? data?.ErrorResponse?.Head?.ErrorMessage ?? JSON.stringify(data);
+    throw new Error(`Falabella FetchStock error ${errorCode}: ${msg}`);
   }
 
+  // Response shapes seen: Body.Skus.Sku[], Body.Products.Product[], Body.Stock.Sku[]
+  const raw =
+    data?.SuccessResponse?.Body?.Skus?.Sku ??
+    data?.Body?.Skus?.Sku ??
+    data?.SuccessResponse?.Body?.Stock?.Sku ??
+    data?.Body?.Stock?.Sku ??
+    data?.SuccessResponse?.Body?.Products?.Product ??
+    data?.Body?.Products?.Product;
+  if (raw == null) return [];
+
+  const items: Record<string, unknown>[] = Array.isArray(raw)
+    ? raw
+    : typeof raw === "object" ? [raw as Record<string, unknown>] : [];
+
+  const results: { sku: string; name: string; quantity: number }[] = [];
+  for (const item of items) {
+    const sku = String(item.SellerSku || item.ShopSku || "");
+    if (sku) {
+      results.push({
+        sku,
+        name: String(item.Name || ""),
+        quantity: parseInt(String(item.Available ?? item.Quantity ?? "0"), 10),
+      });
+    }
+  }
   return results;
 }
 
