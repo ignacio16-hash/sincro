@@ -249,8 +249,11 @@ export default function OrdersPage() {
             <div key={order.orderId} className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
               {/* Order header */}
               <div className="flex items-center justify-between px-6 py-4 border-b border-slate-50 bg-slate-50/50">
-                <div className="flex items-center gap-4">
-                  <span className="font-mono text-sm font-bold text-slate-800">{order.orderId}</span>
+                <div className="flex items-center gap-3">
+                  <div className="flex flex-col">
+                    <span className="text-xs text-slate-400 font-medium">Orden #</span>
+                    <span className="font-mono text-base font-bold text-purple-700">{order.orderId}</span>
+                  </div>
                   <StateChip state={order.orderState} />
                   <span className="text-xs text-slate-400">{formatDate(order.createdDate)}</span>
                 </div>
@@ -316,8 +319,11 @@ export default function OrdersPage() {
             <div key={order.orderId} className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
               {/* Order header */}
               <div className="flex items-center justify-between px-6 py-4 border-b border-slate-50 bg-slate-50/50">
-                <div className="flex items-center gap-4">
-                  <span className="font-mono text-sm font-bold text-slate-800">{order.orderId}</span>
+                <div className="flex items-center gap-3">
+                  <div className="flex flex-col">
+                    <span className="text-xs text-slate-400 font-medium">Orden #</span>
+                    <span className="font-mono text-base font-bold text-orange-700">{order.orderId}</span>
+                  </div>
                   <StateChip state={order.status} />
                   <span className="text-xs text-slate-400">{formatDate(order.createdAt)}</span>
                 </div>

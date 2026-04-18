@@ -148,25 +148,34 @@ export interface RipleyOrder {
   orderLines: RipleyOrderLine[];
 }
 
-// OR11: List orders with full line detail (product_medias for images)
+// OR11: List orders with full line detail (product_medias for images).
+// Mirakl defaults to sort-by-creation-date ASC, so naively using max=20 returns
+// the OLDEST 20 orders. We fetch the last 90 days, sort client-side desc, and
+// slice the newest 20.
 export async function getRipleyOrders(
   apiKey: string,
   instanceUrl: string,
   stateCodes?: string, // comma-separated, e.g. "WAITING_ACCEPTANCE,SHIPPING"
-  max = 20
+  take = 20
 ): Promise<RipleyOrder[]> {
   const client = getClient(apiKey, instanceUrl);
-  // Sort by date_created descending to get most recent first
-  const params: Record<string, string | number> = { max, sort: "date_created_desc" };
+  const startDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+  const params: Record<string, string | number> = {
+    max: 100,
+    start_date: startDate,
+  };
   if (stateCodes) params.order_state_codes = stateCodes;
 
   const { data } = await client.get("/api/orders", { params });
   const orders: Record<string, unknown>[] = data?.orders || [];
 
-  // Sort newest-first regardless of API response order
-  orders.sort((a, b) => new Date(String(b.created_date || "")).getTime() - new Date(String(a.created_date || "")).getTime());
+  orders.sort(
+    (a, b) =>
+      new Date(String(b.created_date || "")).getTime() -
+      new Date(String(a.created_date || "")).getTime()
+  );
 
-  return orders.map((o) => {
+  return orders.slice(0, take).map((o) => {
     const lines: RipleyOrderLine[] = ((o.order_lines as Record<string, unknown>[]) || []).map((line) => {
       const medias: Record<string, string>[] = (line.product_medias as Record<string, string>[]) || [];
       // Prefer "small" type image, fallback to first
