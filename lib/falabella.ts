@@ -105,6 +105,59 @@ export async function getFalabellaStock(
   return parseInt(product?.Quantity || "0", 10);
 }
 
+// GetStock — consulta stock de una lista específica de SellerSkus.
+// Requiere param SellerSku con un array JSON encoded. Acepta hasta ~100 por batch.
+// Docs: https://developers.falabella.com/v500.0.0/reference/getstock
+// Uso: cuando GetProducts/FetchStock retornan E009 (permisos), pero GetStock sí funciona.
+export async function getFalabellaStockForSkus(
+  apiKey: string,
+  userId: string,
+  skus: string[],
+  country = "CL"
+): Promise<{ sku: string; name: string; quantity: number }[]> {
+  if (skus.length === 0) return [];
+  const baseUrl = BASE_URLS[country] || BASE_URLS.CL;
+  const client = getClient(userId);
+  const results: { sku: string; name: string; quantity: number }[] = [];
+  const BATCH = 50;
+
+  for (let i = 0; i < skus.length; i += BATCH) {
+    const chunk = skus.slice(i, i + BATCH);
+    const extra: Record<string, string> = {
+      SellerSku: JSON.stringify(chunk),
+      Limit: String(chunk.length),
+    };
+    const url = buildSignedUrl(baseUrl, "GetStock", userId, apiKey, extra);
+    const { data } = await client.get(url);
+
+    const errorCode = data?.Head?.ErrorCode ?? data?.ErrorResponse?.Head?.ErrorCode;
+    if (errorCode) {
+      const msg = data?.Head?.ErrorMessage ?? data?.ErrorResponse?.Head?.ErrorMessage ?? JSON.stringify(data);
+      throw new Error(`Falabella GetStock error ${errorCode}: ${msg}`);
+    }
+
+    const raw =
+      data?.SuccessResponse?.Body?.Skus?.Sku ??
+      data?.Body?.Skus?.Sku ??
+      data?.SuccessResponse?.Body?.Stock?.Sku ??
+      data?.Body?.Stock?.Sku;
+    const items: Record<string, unknown>[] = Array.isArray(raw)
+      ? raw : raw && typeof raw === "object" ? [raw as Record<string, unknown>] : [];
+
+    for (const item of items) {
+      const sku = String(item.SellerSku || item.ShopSku || "");
+      if (!sku) continue;
+      results.push({
+        sku,
+        name: String(item.Name || ""),
+        quantity: parseInt(String(item.Available ?? item.SellableStock ?? item.Quantity ?? "0"), 10),
+      });
+    }
+  }
+
+  return results;
+}
+
 // Fetch SKUs via FetchStock — bulk endpoint, NO pagination params (per docs sample).
 // Returns all SellerSku + Available in one call.
 async function getFalabellaSkusViaFetchStock(

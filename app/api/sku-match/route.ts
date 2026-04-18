@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getAllBsaleSkus } from "@/lib/bsale";
-import { getAllFalabellaSkus } from "@/lib/falabella";
+import { getAllFalabellaSkus, getFalabellaStockForSkus } from "@/lib/falabella";
 import { getAllRipleySkus } from "@/lib/ripley";
 
 export async function GET() {
@@ -25,12 +25,31 @@ export async function GET() {
     const falabellaConf = falabellaCred?.config as Record<string, string> | undefined;
     const ripleyConf = ripleyCred?.config as Record<string, string> | undefined;
 
-    // Fetch Bsale always; Falabella and Ripley only if configured
-    const [bsaleSkus, falabellaSkus, ripleySkus] = await Promise.all([
-      getAllBsaleSkus(bsaleConf.accessToken, officeId),
-      falabellaConf?.apiKey && falabellaConf?.userId
-        ? getAllFalabellaSkus(falabellaConf.apiKey, falabellaConf.userId, falabellaConf.country || "CL")
-        : Promise.resolve([]),
+    // Fetch Bsale first — su lista de SKUs alimenta la consulta a Falabella/GetStock
+    // cuando GetProducts/FetchStock devuelven E009.
+    const bsaleSkus = await getAllBsaleSkus(bsaleConf.accessToken, officeId);
+
+    const [falabellaSkus, ripleySkus] = await Promise.all([
+      (async () => {
+        if (!falabellaConf?.apiKey || !falabellaConf?.userId) return [];
+        const country = falabellaConf.country || "CL";
+        try {
+          return await getAllFalabellaSkus(falabellaConf.apiKey, falabellaConf.userId, country);
+        } catch (e) {
+          const msg = (e as Error).message;
+          // E009 en GetProducts y FetchStock: fallback a GetStock con la lista de Bsale
+          if (/E009|error 9:/i.test(msg) && bsaleSkus.length > 0) {
+            console.warn("[Falabella] GetProducts y FetchStock denegados, usando GetStock con SKUs de Bsale");
+            return getFalabellaStockForSkus(
+              falabellaConf.apiKey,
+              falabellaConf.userId,
+              bsaleSkus.map((s) => s.sku),
+              country
+            );
+          }
+          throw e;
+        }
+      })(),
       ripleyConf?.apiKey && ripleyConf?.instanceUrl
         ? getAllRipleySkus(ripleyConf.apiKey, ripleyConf.instanceUrl)
         : Promise.resolve([]),
