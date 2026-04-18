@@ -19,42 +19,73 @@ function cacheKey(username: string, baseUrl: string): string {
   return `${baseUrl}::${username}`;
 }
 
-// Login y cachea cookie PRSVC.
+// Headers de navegador para bypass Cloudflare bot-detection.
+const BROWSER_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15",
+  "Accept-Language": "es-419,es;q=0.9",
+  "Accept-Encoding": "gzip, deflate, br",
+  "Sec-Fetch-Dest": "empty",
+  "Sec-Fetch-Mode": "cors",
+  "Sec-Fetch-Site": "same-origin",
+};
+
+// Intenta login con varios nombres de campo. Algunos SVC usan "email", otros "username".
+async function attemptLogin(
+  body: Record<string, string>,
+  baseUrl: string
+): Promise<{ status: number; setCookie?: string[]; bodyText: string }> {
+  const res = await axios.post(`${baseUrl}/api/login`, body, {
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "*/*",
+      Origin: baseUrl,
+      Referer: `${baseUrl}/login`,
+      ...BROWSER_HEADERS,
+    },
+    maxRedirects: 5,
+    timeout: 15000,
+    validateStatus: () => true,
+    responseType: "text",
+    transformResponse: [(d) => d],
+  });
+  return {
+    status: res.status,
+    setCookie: res.headers["set-cookie"] as string[] | undefined,
+    bodyText: typeof res.data === "string" ? res.data : JSON.stringify(res.data),
+  };
+}
+
+// Login y cachea cookie PRSVC. Prueba username, email y user como nombres de campo.
 async function loginSvc(
   username: string,
   password: string,
   baseUrl: string
 ): Promise<CachedCookie> {
-  const res = await axios.post(
-    `${baseUrl}/api/login`,
+  const candidates: Record<string, string>[] = [
     { username, password },
-    {
-      headers: { "Content-Type": "application/json", Accept: "*/*" },
-      maxRedirects: 5,
-      timeout: 15000,
-      validateStatus: (s) => s >= 200 && s < 400,
+    { email: username, password },
+    { user: username, password },
+    { login: username, password },
+  ];
+
+  let lastError = "";
+  for (const body of candidates) {
+    const { status, setCookie, bodyText } = await attemptLogin(body, baseUrl);
+    if (status >= 200 && status < 400 && setCookie) {
+      const prsvc = setCookie.find((c) => c.startsWith("PRSVC="));
+      if (prsvc) {
+        const cookieHeader = prsvc.split(";")[0];
+        const maxAgeMatch = /Max-Age=(\d+)/i.exec(prsvc);
+        const maxAge = maxAgeMatch ? parseInt(maxAgeMatch[1], 10) : 3600;
+        const expiresAt = Date.now() + (maxAge - 300) * 1000;
+        return { value: prsvc, cookieHeader, expiresAt };
+      }
     }
-  );
-
-  const setCookie = res.headers["set-cookie"];
-  if (!setCookie || !Array.isArray(setCookie) || setCookie.length === 0) {
-    throw new Error("Ripley SVC login: no se recibió Set-Cookie");
+    lastError = `status=${status} body=${bodyText.slice(0, 200)}`;
   }
 
-  const prsvc = setCookie.find((c) => c.startsWith("PRSVC="));
-  if (!prsvc) {
-    throw new Error("Ripley SVC login: no se recibió cookie PRSVC");
-  }
-
-  // Extrae solo el valor "PRSVC=..." hasta el primer ";"
-  const cookieHeader = prsvc.split(";")[0];
-
-  // Parsea Max-Age para calcular expiración (con margen de 5 min)
-  const maxAgeMatch = /Max-Age=(\d+)/i.exec(prsvc);
-  const maxAge = maxAgeMatch ? parseInt(maxAgeMatch[1], 10) : 3600;
-  const expiresAt = Date.now() + (maxAge - 300) * 1000;
-
-  return { value: prsvc, cookieHeader, expiresAt };
+  throw new Error(`Ripley SVC login falló con todos los campos probados. Último: ${lastError}`);
 }
 
 // Obtiene cookie válida (cacheada o re-login).
@@ -96,10 +127,10 @@ export async function getRipleySvcLabel(
         Cookie: cookie,
         Origin: baseUrl,
         Referer: `${baseUrl}/order/${orderNumber}`,
+        ...BROWSER_HEADERS,
       },
       responseType: "arraybuffer",
       timeout: 20000,
-      // No lanzar para 401 — re-login y reintento
       validateStatus: () => true,
     }
   );
@@ -118,6 +149,7 @@ export async function getRipleySvcLabel(
           Cookie: freshCookie,
           Origin: baseUrl,
           Referer: `${baseUrl}/order/${orderNumber}`,
+          ...BROWSER_HEADERS,
         },
         responseType: "arraybuffer",
         timeout: 20000,
