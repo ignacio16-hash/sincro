@@ -153,14 +153,18 @@ export async function getRipleyOrders(
   apiKey: string,
   instanceUrl: string,
   stateCodes?: string, // comma-separated, e.g. "WAITING_ACCEPTANCE,SHIPPING"
-  max = 50
+  max = 20
 ): Promise<RipleyOrder[]> {
   const client = getClient(apiKey, instanceUrl);
-  const params: Record<string, string | number> = { max };
+  // Sort by date_created descending to get most recent first
+  const params: Record<string, string | number> = { max, sort: "date_created_desc" };
   if (stateCodes) params.order_state_codes = stateCodes;
 
   const { data } = await client.get("/api/orders", { params });
   const orders: Record<string, unknown>[] = data?.orders || [];
+
+  // Sort newest-first regardless of API response order
+  orders.sort((a, b) => new Date(String(b.created_date || "")).getTime() - new Date(String(a.created_date || "")).getTime());
 
   return orders.map((o) => {
     const lines: RipleyOrderLine[] = ((o.order_lines as Record<string, unknown>[]) || []).map((line) => {

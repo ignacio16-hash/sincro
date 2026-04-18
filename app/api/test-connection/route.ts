@@ -68,9 +68,11 @@ async function testFalabella(config: Record<string, string>): Promise<TestResult
     Format: "JSON",
     Limit: "1",
   };
-  // Seller Center signing: sort alphabetically, concatenate WITHOUT "&" separator
+  // Lazada/Falabella Seller Center: sort + rawurlencode(k)=rawurlencode(v) joined by "&" + HMAC-SHA256 lowercase hex
   const sorted = Object.keys(params).sort();
-  const toSign = sorted.map(k => `${k}=${params[k]}`).join("");
+  const toSign = sorted
+    .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`)
+    .join("&");
   params.Signature = crypto.createHmac("sha256", config.apiKey.trim()).update(toSign).digest("hex");
   const qs = Object.entries(params).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join("&");
   try {

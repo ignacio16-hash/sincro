@@ -23,7 +23,7 @@ export async function GET() {
         : Promise.resolve([]),
 
       ripleyConf?.apiKey && ripleyConf?.instanceUrl
-        ? getRipleyOrders(ripleyConf.apiKey, ripleyConf.instanceUrl, undefined, 50)
+        ? getRipleyOrders(ripleyConf.apiKey, ripleyConf.instanceUrl, undefined, 20)
             .catch((e) => { console.error("[Orders] Ripley:", e.message); return []; })
         : Promise.resolve([]),
     ]);

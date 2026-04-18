@@ -13,15 +13,20 @@ const BASE_URLS: Record<string, string> = {
   MX: "https://sellercenter-api.falabella.com/",
 };
 
+// Lazada/Falabella Seller Center signature (official PHP SDK algorithm):
+//   1. Sort params alphabetically by key
+//   2. rawurlencode each key AND value
+//   3. Join with "&"
+//   4. HMAC-SHA256 with API key → lowercase hex
+// Ref: https://sellercenter-api.falabella.com/ uses the Lazada Seller Center spec.
 function buildSignature(
   params: Record<string, string>,
   apiKey: string
 ): string {
-  // Seller Center signing: sort alphabetically, concatenate WITHOUT separator.
-  // The Lazada/Falabella Seller Center platform does NOT use "&" between pairs —
-  // it concatenates key=value strings directly: "Action=XFormat=YLimit=1..."
   const sorted = Object.keys(params).sort();
-  const toSign = sorted.map((k) => `${k}=${params[k]}`).join("");
+  const toSign = sorted
+    .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`)
+    .join("&");
   return crypto.createHmac("sha256", apiKey.trim()).update(toSign).digest("hex");
 }
 
@@ -32,7 +37,7 @@ function buildSignedUrl(
   apiKey: string,
   extra: Record<string, string> = {}
 ): string {
-  // RFC 3339 with colon in timezone: 2026-04-17T12:00:00+00:00
+  // RFC 3339 with colon in timezone: 2026-04-18T12:00:00+00:00
   const timestamp = new Date().toISOString().replace(/\.\d+Z$/, "+00:00");
   const params: Record<string, string> = {
     Action: action,
@@ -196,18 +201,18 @@ export interface FalabellaOrder {
 export async function getFalabellaOrdersList(
   apiKey: string,
   userId: string,
-  country = "CL",
-  status = "pending"
+  country = "CL"
 ): Promise<FalabellaOrder[]> {
   const baseUrl = BASE_URLS[country] || BASE_URLS.CL;
-  const extra: Record<string, string> = { Limit: "50", Status: status };
+  // Fetch last 20 orders across all statuses, sorted by created date descending
+  const extra: Record<string, string> = { Limit: "20", SortBy: "created_at", SortDirection: "DESC" };
   const url = buildSignedUrl(baseUrl, "GetOrders", userId, apiKey, extra);
   const client = getClient(userId);
   const { data } = await client.get(url);
 
-  const errorCode = data?.Head?.ErrorCode ?? data?.SuccessResponse?.Head?.ErrorCode;
+  const errorCode = data?.Head?.ErrorCode ?? data?.ErrorResponse?.Head?.ErrorCode;
   if (errorCode) {
-    const msg = data?.Head?.ErrorMessage ?? data?.SuccessResponse?.Head?.ErrorMessage ?? JSON.stringify(data);
+    const msg = data?.Head?.ErrorMessage ?? data?.ErrorResponse?.Head?.ErrorMessage ?? JSON.stringify(data);
     throw new Error(`Falabella GetOrders error ${errorCode}: ${msg}`);
   }
 
@@ -224,7 +229,6 @@ export async function getFalabellaOrdersList(
     const orderId = String(order.OrderId || "");
     if (!orderId) continue;
 
-    // Fetch items for this order
     let items: FalabellaOrderItem[] = [];
     try {
       items = await getFalabellaOrderItems(apiKey, userId, orderId, country);
@@ -238,6 +242,8 @@ export async function getFalabellaOrdersList(
     });
   }
 
+  // Ensure newest-first sort
+  results.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   return results;
 }
 
