@@ -118,6 +118,26 @@ async function testRipley(config: Record<string, string>): Promise<TestResult> {
   }
 }
 
+async function testRipleySvc(config: Record<string, string>): Promise<TestResult> {
+  if (!config.username) return { ok: false, message: "Falta el usuario SVC" };
+  if (!config.password) return { ok: false, message: "Falta la contraseña SVC" };
+  const baseUrl = config.baseUrl || "https://sellercenter.ripleylabs.com";
+  // Sin docs del API SVC, por ahora solo verificamos que la URL responde.
+  // La integración real (login + etiquetas) se conectará cuando tengamos el endpoint.
+  try {
+    await axios.get(baseUrl, { timeout: 8000, maxRedirects: 2, validateStatus: () => true });
+    return {
+      ok: true,
+      message: "Credenciales guardadas. Endpoint SVC pendiente de integración real (se requieren docs API).",
+    };
+  } catch (err) {
+    if (axios.isAxiosError(err)) {
+      return { ok: false, message: `Base URL no responde: ${err.message}` };
+    }
+    return { ok: false, message: (err as Error).message };
+  }
+}
+
 export async function POST(req: NextRequest) {
   const { platform, config: rawConfig } = await req.json() as {
     platform: string;
@@ -140,6 +160,7 @@ export async function POST(req: NextRequest) {
     case "paris":     result = await testParis(config); break;
     case "falabella": result = await testFalabella(config); break;
     case "ripley":    result = await testRipley(config); break;
+    case "ripley_svc": result = await testRipleySvc(config); break;
     default:          result = { ok: false, message: "Plataforma desconocida" };
   }
 

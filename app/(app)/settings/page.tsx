@@ -54,10 +54,22 @@ const platforms: PlatformConfig[] = [
     label: "Ripley (Mirakl)",
     color: "border-purple-200 bg-purple-50",
     dot: "bg-purple-500",
-    description: "Ripley vía Mirakl MMP. Confirma la Instance URL con el equipo de Ripley.",
+    description: "Ripley vía Mirakl MMP — gestión comercial: productos, precios, stock, boletas, postventa.",
     fields: [
       { key: "apiKey", label: "API Key Mirakl", placeholder: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx", type: "password" },
       { key: "instanceUrl", label: "Instance URL", placeholder: "https://ripley.mirakl.net" },
+    ],
+  },
+  {
+    platform: "ripley_svc",
+    label: "Ripley SVC (SellerCenter)",
+    color: "border-pink-200 bg-pink-50",
+    dot: "bg-pink-500",
+    description: "Ripley SVC — operación logística: etiquetas, manifiestos, agendamiento de despachos. Usa tu usuario/contraseña de https://sellercenter.ripleylabs.com",
+    fields: [
+      { key: "username", label: "Usuario (Seller)", placeholder: "tu-usuario-svc" },
+      { key: "password", label: "Contraseña", placeholder: "••••••••", type: "password" },
+      { key: "baseUrl", label: "Base URL", placeholder: "https://sellercenter.ripleylabs.com" },
     ],
   },
 ];
@@ -67,6 +79,7 @@ const webhookPaths: Record<string, string> = {
   paris: "/api/webhooks/paris",
   falabella: "/api/webhooks/falabella",
   ripley: "/api/webhooks/ripley",
+  ripley_svc: "/api/webhooks/ripley",
 };
 
 type TestStatus = { loading: boolean; ok?: boolean; message?: string };
