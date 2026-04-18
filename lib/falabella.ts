@@ -105,6 +105,61 @@ export async function getFalabellaStock(
   return parseInt(product?.Quantity || "0", 10);
 }
 
+// Fetch SKUs via FetchStock — requires fewer permissions than GetProducts.
+// FetchStock returns: SellerSku + Available (paginated).
+async function getFalabellaSkusViaFetchStock(
+  apiKey: string,
+  userId: string,
+  country: string
+): Promise<{ sku: string; name: string; quantity: number }[]> {
+  const baseUrl = BASE_URLS[country] || BASE_URLS.CL;
+  const results: { sku: string; name: string; quantity: number }[] = [];
+  let offset = 0;
+  const limit = 100;
+  const client = getClient(userId);
+
+  while (true) {
+    const extra: Record<string, string> = { Limit: String(limit) };
+    if (offset > 0) extra.Offset = String(offset);
+    const url = buildSignedUrl(baseUrl, "FetchStock", userId, apiKey, extra);
+    const { data } = await client.get(url);
+
+    const errorCode = data?.Head?.ErrorCode ?? data?.ErrorResponse?.Head?.ErrorCode;
+    if (errorCode) {
+      const msg = data?.Head?.ErrorMessage ?? data?.ErrorResponse?.Head?.ErrorMessage ?? JSON.stringify(data);
+      throw new Error(`Falabella FetchStock error ${errorCode}: ${msg}`);
+    }
+
+    // Response: SuccessResponse.Body.Skus.Sku or Body.Skus.Sku
+    const raw =
+      data?.SuccessResponse?.Body?.Skus?.Sku ??
+      data?.Body?.Skus?.Sku ??
+      data?.SuccessResponse?.Body?.Products?.Product ??
+      data?.Body?.Products?.Product;
+    if (raw == null) break;
+
+    const items: Record<string, unknown>[] = Array.isArray(raw)
+      ? raw
+      : typeof raw === "object" ? [raw as Record<string, unknown>] : [];
+
+    for (const item of items) {
+      const sku = String(item.SellerSku || item.ShopSku || "");
+      if (sku) {
+        results.push({
+          sku,
+          name: String(item.Name || ""),
+          quantity: parseInt(String(item.Available ?? item.Quantity ?? "0"), 10),
+        });
+      }
+    }
+
+    if (items.length < limit) break;
+    offset += limit;
+  }
+
+  return results;
+}
+
 export async function getAllFalabellaSkus(
   apiKey: string,
   userId: string,
@@ -117,8 +172,7 @@ export async function getAllFalabellaSkus(
 
   while (true) {
     // Filter is required by Falabella Seller Center GetProducts (per docs example URL).
-    // "all" = all products regardless of status. Other values: live, inactive, deleted,
-    // image-missing, pending, rejected, sold-out.
+    // "all" = all products regardless of status.
     const extra: Record<string, string> = { Filter: "all", Limit: String(limit) };
     if (offset > 0) extra.Offset = String(offset);
     const url = buildSignedUrl(baseUrl, "GetProducts", userId, apiKey, extra);
@@ -127,6 +181,12 @@ export async function getAllFalabellaSkus(
 
     const errorCode = data?.Head?.ErrorCode ?? data?.ErrorResponse?.Head?.ErrorCode;
     if (errorCode) {
+      // E009 = Access Denied — API key lacks GetProducts permission.
+      // Fall back to FetchStock which only needs stock-read permission.
+      if (String(errorCode) === "9" || String(errorCode).toUpperCase() === "E009") {
+        console.warn("[Falabella] GetProducts denied (E009), falling back to FetchStock");
+        return getFalabellaSkusViaFetchStock(apiKey, userId, country);
+      }
       const msg = data?.Head?.ErrorMessage ?? data?.ErrorResponse?.Head?.ErrorMessage ?? JSON.stringify(data);
       throw new Error(`Falabella GetProducts error ${errorCode}: ${msg}`);
     }
