@@ -105,56 +105,94 @@ async function getValidCookie(
   return fresh.cookieHeader;
 }
 
-// POST /api/label/print → etiqueta de envío (PDF).
-// Returns raw response data. Body asumido: { orderNumber }. Si falla con 400
-// y el campo correcto fuera "orderId", probar ajustar.
+// GET /api/order/{orderId} → detalle orden con labels[]._id
+// orderId típicamente viene como "24512529402-A" (commercial_id + sufijo).
+// Si recibimos solo el commercial_id, probamos el formato con "-A".
+async function fetchOrderLabelId(
+  orderId: string,
+  cookie: string,
+  baseUrl: string
+): Promise<{ labelId: string; resolvedOrderId: string }> {
+  const candidates = /-[A-Z]$/.test(orderId) ? [orderId] : [`${orderId}-A`, orderId];
+  let lastError = "";
+  for (const candidate of candidates) {
+    const res = await axios.get(`${baseUrl}/api/order/${candidate}`, {
+      headers: {
+        Accept: "application/json",
+        Cookie: cookie,
+        Referer: `${baseUrl}/order/${candidate}`,
+        ...BROWSER_HEADERS,
+      },
+      timeout: 15000,
+      validateStatus: () => true,
+    });
+    if (res.status >= 200 && res.status < 300 && res.data) {
+      const data = res.data as { labels?: Array<{ _id: string; active?: boolean }> };
+      const labels = data.labels || [];
+      const active = labels.find((l) => l.active) || labels[0];
+      if (active?._id) {
+        return { labelId: active._id, resolvedOrderId: candidate };
+      }
+      lastError = `orden ${candidate} sin labels`;
+      continue;
+    }
+    lastError = `GET /api/order/${candidate} → ${res.status}`;
+  }
+  throw new Error(`No se pudo obtener label_id. ${lastError}`);
+}
+
+// Flujo: GET /api/order/{id} para obtener labels[]._id → POST /api/label/print
+// con body { labels: [{ label_id }] }. Responde PDF binario.
 export async function getRipleySvcLabel(
   username: string,
   password: string,
-  orderNumber: string,
+  orderId: string,
   baseUrlInput?: string
 ): Promise<{ data: Buffer; contentType: string }> {
   const baseUrl = (baseUrlInput || DEFAULT_BASE_URL).replace(/\/$/, "");
-  const cookie = await getValidCookie(username, password, baseUrl);
+  let cookie = await getValidCookie(username, password, baseUrl);
 
-  const res = await axios.post(
-    `${baseUrl}/api/label/print`,
-    { orderNumber },
-    {
+  let resolved: { labelId: string; resolvedOrderId: string };
+  try {
+    resolved = await fetchOrderLabelId(orderId, cookie, baseUrl);
+  } catch (err) {
+    // Cookie pudo haber expirado; re-login y reintento
+    cookieCache.delete(cacheKey(username, baseUrl));
+    cookie = await getValidCookie(username, password, baseUrl);
+    resolved = await fetchOrderLabelId(orderId, cookie, baseUrl);
+    void err;
+  }
+
+  const printBody = { labels: [{ label_id: resolved.labelId }] };
+  const res = await axios.post(`${baseUrl}/api/label/print`, printBody, {
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "*/*",
+      Cookie: cookie,
+      Origin: baseUrl,
+      Referer: `${baseUrl}/order/${resolved.resolvedOrderId}`,
+      ...BROWSER_HEADERS,
+    },
+    responseType: "arraybuffer",
+    timeout: 20000,
+    validateStatus: () => true,
+  });
+
+  if (res.status === 401 || res.status === 403) {
+    cookieCache.delete(cacheKey(username, baseUrl));
+    const freshCookie = await getValidCookie(username, password, baseUrl);
+    const retry = await axios.post(`${baseUrl}/api/label/print`, printBody, {
       headers: {
         "Content-Type": "application/json",
         Accept: "*/*",
-        Cookie: cookie,
+        Cookie: freshCookie,
         Origin: baseUrl,
-        Referer: `${baseUrl}/order/${orderNumber}`,
+        Referer: `${baseUrl}/order/${resolved.resolvedOrderId}`,
         ...BROWSER_HEADERS,
       },
       responseType: "arraybuffer",
       timeout: 20000,
-      validateStatus: () => true,
-    }
-  );
-
-  // Si la cookie expiró (401/403), re-login y reintento una vez
-  if (res.status === 401 || res.status === 403) {
-    cookieCache.delete(cacheKey(username, baseUrl));
-    const freshCookie = await getValidCookie(username, password, baseUrl);
-    const retry = await axios.post(
-      `${baseUrl}/api/label/print`,
-      { orderNumber },
-      {
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "*/*",
-          Cookie: freshCookie,
-          Origin: baseUrl,
-          Referer: `${baseUrl}/order/${orderNumber}`,
-          ...BROWSER_HEADERS,
-        },
-        responseType: "arraybuffer",
-        timeout: 20000,
-      }
-    );
+    });
     return {
       data: Buffer.from(retry.data as ArrayBuffer),
       contentType: String(retry.headers["content-type"] || "application/pdf"),
