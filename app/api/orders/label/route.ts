@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getRipleyOrderDocuments, downloadRipleyOrderDocument } from "@/lib/ripley";
+import { getRipleySvcLabel } from "@/lib/ripley-svc";
 import { getFalabellaShippingLabel } from "@/lib/falabella";
 
 export const dynamic = "force-dynamic";
@@ -17,26 +17,32 @@ export async function GET(req: NextRequest) {
   try {
     if (platform === "ripley") {
       if (!orderId) return NextResponse.json({ error: "orderId requerido" }, { status: 400 });
-      const ripleyCred = await prisma.apiCredential.findUnique({ where: { platform: "ripley" } });
-      const conf = ripleyCred?.config as Record<string, string> | undefined;
-      if (!conf?.apiKey || !conf?.instanceUrl)
-        return NextResponse.json({ error: "Ripley no configurado" }, { status: 400 });
-
-      // OR72: list docs, find shipping label
-      const docs = await getRipleyOrderDocuments(conf.apiKey, conf.instanceUrl, orderId);
-      // Mirakl label types: SHIPPING_LABEL, SYSTEM_DELIVERY_BILL, or any doc if only one exists
-      const labelDoc =
-        docs.find((d) => d.type === "SHIPPING_LABEL") ||
-        docs.find((d) => /label|etiqueta|guia|despacho/i.test(d.type)) ||
-        docs[0];
-
-      if (!labelDoc) {
-        return NextResponse.json({ error: "No hay etiqueta disponible para esta orden" }, { status: 404 });
+      // Ripley: las etiquetas están en SVC (sellercenter.ripleylabs.com), NO en Mirakl.
+      const svcCred = await prisma.apiCredential.findUnique({ where: { platform: "ripley_svc" } });
+      const svcConf = svcCred?.config as Record<string, string> | undefined;
+      if (!svcConf?.username || !svcConf?.password) {
+        return NextResponse.json(
+          { error: "Ripley SVC no configurado — agrega usuario/contraseña en Configuración" },
+          { status: 400 }
+        );
       }
 
-      // OR73: download
-      const buffer = await downloadRipleyOrderDocument(conf.apiKey, conf.instanceUrl, labelDoc.id);
-      return new Response(buffer.buffer as ArrayBuffer, {
+      const { data, contentType } = await getRipleySvcLabel(
+        svcConf.username,
+        svcConf.password,
+        orderId,
+        svcConf.baseUrl
+      );
+
+      // SVC devuelve text/plain con base64 del PDF. Detectar y decodificar.
+      let pdfBuffer: Buffer = data;
+      const rawText = data.toString("utf-8").trim();
+      const isBase64 = /^[A-Za-z0-9+/=\s]+$/.test(rawText) && rawText.length > 100;
+      if (contentType.includes("text/plain") && isBase64) {
+        pdfBuffer = Buffer.from(rawText.replace(/\s/g, ""), "base64");
+      }
+
+      return new Response(pdfBuffer.buffer as ArrayBuffer, {
         headers: {
           "Content-Type": "application/pdf",
           "Content-Disposition": `attachment; filename="etiqueta-${orderId}.pdf"`,
