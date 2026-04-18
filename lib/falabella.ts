@@ -192,7 +192,8 @@ export interface FalabellaOrderItem {
 }
 
 export interface FalabellaOrder {
-  orderId: string;
+  orderId: string;       // internal numeric ID (used for API calls)
+  orderNumber: string;   // human-readable number shown in Falabella Seller Center UI
   status: string;
   createdAt: string;
   items: FalabellaOrderItem[];
@@ -237,6 +238,7 @@ export async function getFalabellaOrdersList(
 
     results.push({
       orderId,
+      orderNumber: String(order.OrderNumber || orderId),
       status: String(order.Status || order.OrderStatus || "unknown"),
       createdAt: String(order.CreatedAt || order.CreatedDate || ""),
       items,

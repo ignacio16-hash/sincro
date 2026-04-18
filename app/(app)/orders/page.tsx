@@ -15,6 +15,7 @@ interface FalabellaItem {
 
 interface FalabellaOrder {
   orderId: string;
+  orderNumber: string;
   status: string;
   createdAt: string;
   items: FalabellaItem[];
@@ -322,7 +323,10 @@ export default function OrdersPage() {
                 <div className="flex items-center gap-3">
                   <div className="flex flex-col">
                     <span className="text-xs text-slate-400 font-medium">Orden #</span>
-                    <span className="font-mono text-base font-bold text-orange-700">{order.orderId}</span>
+                    <span className="font-mono text-base font-bold text-orange-700">{order.orderNumber}</span>
+                    {order.orderNumber !== order.orderId && (
+                      <span className="font-mono text-[10px] text-slate-400 mt-0.5">id: {order.orderId}</span>
+                    )}
                   </div>
                   <StateChip state={order.status} />
                   <span className="text-xs text-slate-400">{formatDate(order.createdAt)}</span>
@@ -347,7 +351,10 @@ export default function OrdersPage() {
 
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-slate-900 text-sm truncate">{item.name || "—"}</p>
-                      <p className="font-mono text-xs text-orange-600 mt-0.5">{item.sku}</p>
+                      <div className="mt-1 inline-flex items-center gap-1.5">
+                        <span className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">SKU Seller</span>
+                        <span className="font-mono text-sm font-semibold text-orange-700 bg-orange-50 px-2 py-0.5 rounded">{item.sku || "—"}</span>
+                      </div>
                     </div>
 
                     <div className="text-center">
