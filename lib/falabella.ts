@@ -116,9 +116,10 @@ export async function getAllFalabellaSkus(
   const limit = 100;
 
   while (true) {
-    // Do NOT include Offset=0: Falabella skips default-value params when
-    // computing the expected signature → E007 if we include it but they don't.
-    const extra: Record<string, string> = { Limit: String(limit) };
+    // Filter is required by Falabella Seller Center GetProducts (per docs example URL).
+    // "all" = all products regardless of status. Other values: live, inactive, deleted,
+    // image-missing, pending, rejected, sold-out.
+    const extra: Record<string, string> = { Filter: "all", Limit: String(limit) };
     if (offset > 0) extra.Offset = String(offset);
     const url = buildSignedUrl(baseUrl, "GetProducts", userId, apiKey, extra);
     const client = getClient(userId);
