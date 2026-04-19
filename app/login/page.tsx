@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 interface Settings {
   logoText: string;
+  logoSvg?: string | null;
   imageUrl: string;
 }
 
@@ -13,7 +14,7 @@ function LoginInner() {
   const qs = useSearchParams();
   const next = qs.get("next") || "";
 
-  const [settings, setSettings] = useState<Settings>({ logoText: "PARROT", imageUrl: "" });
+  const [settings, setSettings] = useState<Settings>({ logoText: "PARROT", logoSvg: null, imageUrl: "" });
   const [stage, setStage] = useState<"username" | "pin">("username");
   const [username, setUsername] = useState("");
   const [pin, setPin] = useState(["", "", "", ""]);
@@ -91,12 +92,20 @@ function LoginInner() {
       <div className="flex-1 flex flex-col px-6 sm:px-16 lg:px-24 py-10 lg:py-16">
         {/* Logo */}
         <div className="mb-12 lg:mb-20">
-          <h1
-            className="font-bold tracking-[0.02em] leading-none select-none"
-            style={{ fontSize: "clamp(3rem, 7vw, 5.5rem)", letterSpacing: "-0.01em" }}
-          >
-            {settings.logoText || "PARROT"}
-          </h1>
+          {settings.logoSvg ? (
+            <div
+              className="select-none [&>svg]:h-16 [&>svg]:lg:h-20 [&>svg]:w-auto [&>svg]:max-w-full"
+              aria-label={settings.logoText || "PARROT"}
+              dangerouslySetInnerHTML={{ __html: settings.logoSvg }}
+            />
+          ) : (
+            <h1
+              className="font-bold tracking-[0.02em] leading-none select-none"
+              style={{ fontSize: "clamp(3rem, 7vw, 5.5rem)", letterSpacing: "-0.01em" }}
+            >
+              {settings.logoText || "PARROT"}
+            </h1>
+          )}
         </div>
 
         <div className="max-w-md w-full">

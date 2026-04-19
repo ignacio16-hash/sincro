@@ -88,8 +88,9 @@ export default function SettingsPage() {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [newUser, setNewUser] = useState({ username: "", pin: "", role: "vendedor" as "admin" | "vendedor" });
   const [userError, setUserError] = useState<string | null>(null);
-  const [loginSettings, setLoginSettings] = useState({ logoText: "PARROT", imageUrl: "" });
+  const [loginSettings, setLoginSettings] = useState<{ logoText: string; logoSvg: string | null; imageUrl: string }>({ logoText: "PARROT", logoSvg: null, imageUrl: "" });
   const [loginSaved, setLoginSaved] = useState(false);
+  const [logoSvgError, setLogoSvgError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/auth/me").then((r) => r.json()).then((d: { user: Me | null }) => setMe(d.user));
@@ -196,16 +197,43 @@ export default function SettingsPage() {
 
   async function saveLoginSettings(e: React.FormEvent) {
     e.preventDefault();
+    setLogoSvgError(null);
     const res = await fetch("/api/login-settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(loginSettings),
     });
-    if (!res.ok) { alert("Error al guardar"); return; }
-    const json = await res.json();
-    setLoginSettings({ logoText: json.logoText, imageUrl: json.imageUrl });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setLogoSvgError(json.error || "Error al guardar");
+      return;
+    }
+    setLoginSettings({ logoText: json.logoText, logoSvg: json.logoSvg ?? null, imageUrl: json.imageUrl });
     setLoginSaved(true);
     setTimeout(() => setLoginSaved(false), 3000);
+  }
+
+  async function handleSvgFile(file: File) {
+    setLogoSvgError(null);
+    if (file.size > 64 * 1024) {
+      setLogoSvgError("El SVG debe pesar menos de 64 KB");
+      return;
+    }
+    if (!file.type.includes("svg") && !file.name.toLowerCase().endsWith(".svg")) {
+      setLogoSvgError("El archivo debe ser .svg");
+      return;
+    }
+    const text = await file.text();
+    if (!/<svg[\s>]/i.test(text)) {
+      setLogoSvgError("El archivo no contiene un <svg> válido");
+      return;
+    }
+    setLoginSettings((prev) => ({ ...prev, logoSvg: text }));
+  }
+
+  function clearLogoSvg() {
+    setLoginSettings((prev) => ({ ...prev, logoSvg: null }));
+    setLogoSvgError(null);
   }
 
   return (
@@ -324,7 +352,62 @@ export default function SettingsPage() {
                 maxLength={40}
                 className="w-full bg-transparent border-0 border-b border-black py-2 text-xs tracking-widest focus:outline-none"
               />
+              <p className="text-[10px] font-light tracking-widest text-neutral-400 mt-2">
+                Se muestra solo si no hay un logo SVG cargado.
+              </p>
             </div>
+
+            <div>
+              <label className="block text-[10px] font-light tracking-[0.25em] text-neutral-500 mb-2">
+                LOGO SVG (OPCIONAL · REEMPLAZA AL TEXTO)
+              </label>
+              <div className="flex flex-wrap items-center gap-4">
+                <label className="text-[11px] font-bold tracking-[0.25em] underline underline-offset-[6px] hover:no-underline cursor-pointer">
+                  Subir archivo .svg
+                  <input
+                    type="file"
+                    accept=".svg,image/svg+xml"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleSvgFile(f);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+                {loginSettings.logoSvg && (
+                  <button
+                    type="button"
+                    onClick={clearLogoSvg}
+                    className="text-[11px] font-bold tracking-[0.25em] underline underline-offset-[6px] hover:no-underline text-neutral-500"
+                  >
+                    Quitar
+                  </button>
+                )}
+              </div>
+              <textarea
+                value={loginSettings.logoSvg || ""}
+                onChange={(e) => setLoginSettings({ ...loginSettings, logoSvg: e.target.value || null })}
+                placeholder="<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 24'>…</svg>"
+                rows={5}
+                className="w-full mt-3 border border-neutral-300 p-2 text-[11px] font-mono tracking-tight focus:outline-none focus:border-black"
+              />
+              {logoSvgError && (
+                <p className="text-[11px] font-light tracking-wider mt-2">{logoSvgError}</p>
+              )}
+              {loginSettings.logoSvg && (
+                <div className="mt-3 border border-neutral-200 p-6 flex items-center justify-center bg-neutral-50">
+                  <div
+                    className="[&>svg]:h-16 [&>svg]:w-auto [&>svg]:max-w-full"
+                    dangerouslySetInnerHTML={{ __html: loginSettings.logoSvg }}
+                  />
+                </div>
+              )}
+              <p className="text-[10px] font-light tracking-widest text-neutral-400 mt-2">
+                Se sanitiza en el servidor (sin scripts). Máx. 64 KB.
+              </p>
+            </div>
+
             <div>
               <label className="block text-[10px] font-light tracking-[0.25em] text-neutral-500 mb-2">
                 URL IMAGEN (MODELO / FONDO)
