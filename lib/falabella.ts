@@ -175,7 +175,8 @@ export async function getFalabellaStockForSkus(
   apiKey: string,
   userId: string,
   skus: string[],
-  country = "CL"
+  country = "CL",
+  facilityId?: string
 ): Promise<{ sku: string; name: string; quantity: number }[]> {
   if (skus.length === 0) return [];
   const baseUrl = BASE_URLS[country] || BASE_URLS.CL;
@@ -186,10 +187,10 @@ export async function getFalabellaStockForSkus(
   for (let i = 0; i < skus.length; i += BATCH) {
     const chunk = skus.slice(i, i + BATCH);
     const extra: Record<string, string> = {
-      FacilityId: "GSC-001",
       SellerSku: JSON.stringify(chunk),
       Limit: String(chunk.length),
     };
+    if (facilityId) extra.FacilityId = facilityId;
     const url = buildSignedUrl(baseUrl, "GetStock", userId, apiKey, extra);
     const { data } = await client.get(url);
 
