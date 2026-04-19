@@ -629,8 +629,9 @@ export async function createFalabellaWebhook(
   const client = getClient(userId);
   const eventEls = events.map((e) => `<Event>${xmlEscape(e)}</Event>`).join("");
   const xml = `<?xml version="1.0" encoding="UTF-8"?><Request><Webhook><CallbackUrl>${xmlEscape(callbackUrl)}</CallbackUrl><Events>${eventEls}</Events></Webhook></Request>`;
-  const { data } = await client.post(url, `payload=${encodeURIComponent(xml)}`, {
-    headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+  // Body XML crudo (NO form-urlencoded payload=... ese wrapper es solo para UpdateStock feeds).
+  const { data } = await client.post(url, xml, {
+    headers: { "Content-Type": "application/xml", Accept: "application/json" },
   });
   const errorCode = data?.Head?.ErrorCode ?? data?.ErrorResponse?.Head?.ErrorCode;
   if (errorCode) {
