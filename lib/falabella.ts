@@ -416,11 +416,50 @@ function xmlEscape(s: string): string {
 // UpdateStock acepta múltiples <Product> en un solo payload → 1 request en vez de N.
 // Docs: https://developers.falabella.com/v500.0.0/reference/updatestock
 // Dividimos en batches de 500 para evitar payloads demasiado grandes.
+// GetWarehouse — lista las bodegas del seller. Devuelve FacilityId/SellerWarehouseId.
+export async function getFalabellaWarehouses(
+  apiKey: string,
+  userId: string,
+  country = "CL"
+): Promise<{ facilityId: string; sellerWarehouseId: string; name: string }[]> {
+  const baseUrl = BASE_URLS[country] || BASE_URLS.CL;
+  const url = buildSignedUrl(baseUrl, "GetWarehouse", userId, apiKey);
+  const client = getClient(userId);
+  const { data } = await client.get(url);
+
+  const errorCode = data?.Head?.ErrorCode ?? data?.ErrorResponse?.Head?.ErrorCode;
+  if (errorCode) {
+    const msg = data?.Head?.ErrorMessage ?? data?.ErrorResponse?.Head?.ErrorMessage ?? JSON.stringify(data);
+    throw new Error(`Falabella GetWarehouse error ${errorCode}: ${msg}`);
+  }
+
+  const raw =
+    data?.SuccessResponse?.Body?.Warehouses?.Warehouse ??
+    data?.Body?.Warehouses?.Warehouse ??
+    data?.SuccessResponse?.Body?.Warehouse ??
+    data?.Body?.Warehouse;
+  const items: Record<string, unknown>[] = Array.isArray(raw)
+    ? raw : raw && typeof raw === "object" ? [raw as Record<string, unknown>] : [];
+
+  return items.map((w) => ({
+    facilityId: String(w.FacilityId || w.FacilityID || ""),
+    sellerWarehouseId: String(w.SellerWarehouseId || w.SellerWarehousesId || ""),
+    name: String(w.Name || w.WarehouseName || ""),
+  }));
+}
+
+// UpdateStock — XML body (Content-Type application/xml, raw, NO payload= wrapper).
+// Formato per docs:
+//   <Request><Warehouse>
+//     <Stock><SellerWarehousesId>X</SellerWarehousesId><SellerSku>Y</SellerSku><Quantity>N</Quantity></Stock>
+//     ...
+//   </Warehouse></Request>
 export async function batchUpdateFalabellaStock(
   apiKey: string,
   userId: string,
   items: { sku: string; quantity: number }[],
-  country = "CL"
+  country = "CL",
+  sellerWarehouseId?: string
 ): Promise<{ success: string[]; failed: string[]; errorMessages: string[] }> {
   if (items.length === 0) return { success: [], failed: [], errorMessages: [] };
   const baseUrl = BASE_URLS[country] || BASE_URLS.CL;
@@ -430,16 +469,32 @@ export async function batchUpdateFalabellaStock(
   const errorMessages: string[] = [];
   const BATCH = 500;
 
+  // Auto-descubrir warehouseId si no se pasó
+  let whId = sellerWarehouseId;
+  if (!whId) {
+    try {
+      const warehouses = await getFalabellaWarehouses(apiKey, userId, country);
+      whId = warehouses.find((w) => w.sellerWarehouseId)?.sellerWarehouseId
+        || warehouses[0]?.facilityId
+        || "";
+    } catch (e) {
+      console.warn("[Falabella UpdateStock] GetWarehouse falló:", (e as Error).message);
+    }
+  }
+
   for (let i = 0; i < items.length; i += BATCH) {
     const chunk = items.slice(i, i + BATCH);
-    const products = chunk
-      .map((it) => `<Product><SellerSKU>${xmlEscape(it.sku)}</SellerSKU><Quantity>${it.quantity}</Quantity></Product>`)
+    const stockEls = chunk
+      .map((it) => {
+        const whTag = whId ? `<SellerWarehousesId>${xmlEscape(whId)}</SellerWarehousesId>` : "";
+        return `<Stock>${whTag}<SellerSku>${xmlEscape(it.sku)}</SellerSku><Quantity>${it.quantity}</Quantity></Stock>`;
+      })
       .join("");
-    const xml = `<?xml version="1.0" encoding="UTF-8"?><Request>${products}</Request>`;
+    const xml = `<?xml version="1.0" encoding="UTF-8"?><Request><Warehouse>${stockEls}</Warehouse></Request>`;
     const url = buildSignedUrl(baseUrl, "UpdateStock", userId, apiKey);
     try {
-      const { data } = await client.post(url, `payload=${encodeURIComponent(xml)}`, {
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      const { data } = await client.post(url, xml, {
+        headers: { "Content-Type": "application/xml", Accept: "application/json" },
       });
       const errorCode = data?.Head?.ErrorCode ?? data?.ErrorResponse?.Head?.ErrorCode;
       if (errorCode) {
