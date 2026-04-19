@@ -204,16 +204,11 @@ export async function getFalabellaStockForSkus(
       throw new Error(`Falabella GetStock error ${errorCode}: ${msg}`);
     }
 
-    // Per docs: Body.ProductStockList.Product[]. Fallbacks para shapes históricas.
+    // Shape real (confirmado): SuccessResponse.Body.Stocks.SellerWarehouses[]
+    // Cada entry: { Sku, Quantity (string), FacilityID, SellerWarehouseId }
     const raw =
-      data?.SuccessResponse?.Body?.ProductStockList?.Product ??
-      data?.Body?.ProductStockList?.Product ??
-      data?.SuccessResponse?.Body?.Skus?.Sku ??
-      data?.Body?.Skus?.Sku ??
-      data?.SuccessResponse?.Body?.Stock?.Sku ??
-      data?.Body?.Stock?.Sku ??
-      data?.SuccessResponse?.Body?.Products?.Product ??
-      data?.Body?.Products?.Product;
+      data?.SuccessResponse?.Body?.Stocks?.SellerWarehouses ??
+      data?.Body?.Stocks?.SellerWarehouses;
 
     if (raw == null && i === 0) {
       console.warn("[Falabella GetStock] shape inesperada:", JSON.stringify(data).slice(0, 500));
@@ -222,18 +217,9 @@ export async function getFalabellaStockForSkus(
       ? raw : raw && typeof raw === "object" ? [raw as Record<string, unknown>] : [];
 
     for (const item of items) {
-      const sku = String(item.SellerSku || item.ShopSku || "");
+      const sku = String(item.Sku || item.SellerSku || item.ShopSku || "");
       if (!sku) continue;
-      const qty = parseInt(
-        String(
-          item.SellableStock ??
-          item.Available ??
-          item.Quantity ??
-          (item.Stock as Record<string, unknown>)?.SellableStock ??
-          "0"
-        ),
-        10
-      ) || 0;
+      const qty = parseInt(String(item.Quantity ?? item.SellableStock ?? item.Available ?? "0"), 10) || 0;
       const prev = agg.get(sku);
       if (prev) prev.quantity += qty;
       else agg.set(sku, { name: String(item.Name || ""), quantity: qty });
