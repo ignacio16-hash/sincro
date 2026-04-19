@@ -577,6 +577,97 @@ export async function getFalabellaShippingLabel(
   return String(base64);
 }
 
+// ─── Webhooks ────────────────────────────────────────────────────────────────
+// Docs: https://developers.falabella.com/v500.0.0/reference/createwebhook
+//       https://developers.falabella.com/v500.0.0/reference/getwebhooks
+//       https://developers.falabella.com/v500.0.0/reference/getwebhookentities
+
+// GetWebhookEntities — lista todos los eventos disponibles para webhooks.
+export async function getFalabellaWebhookEntities(
+  apiKey: string,
+  userId: string,
+  country = "CL"
+): Promise<unknown> {
+  const baseUrl = BASE_URLS[country] || BASE_URLS.CL;
+  const url = buildSignedUrl(baseUrl, "GetWebhookEntities", userId, apiKey);
+  const client = getClient(userId);
+  const { data } = await client.get(url);
+  const errorCode = data?.Head?.ErrorCode ?? data?.ErrorResponse?.Head?.ErrorCode;
+  if (errorCode) {
+    const msg = data?.Head?.ErrorMessage ?? data?.ErrorResponse?.Head?.ErrorMessage ?? JSON.stringify(data);
+    throw new Error(`Falabella GetWebhookEntities error ${errorCode}: ${msg}`);
+  }
+  return data;
+}
+
+// GetWebhooks — lista webhooks registrados.
+export async function getFalabellaWebhooks(
+  apiKey: string,
+  userId: string,
+  country = "CL"
+): Promise<unknown> {
+  const baseUrl = BASE_URLS[country] || BASE_URLS.CL;
+  const url = buildSignedUrl(baseUrl, "GetWebhooks", userId, apiKey);
+  const client = getClient(userId);
+  const { data } = await client.get(url);
+  return data;
+}
+
+// CreateWebhook — registra un webhook. Body JSON: { CallbackUrl, Events: [...] }.
+export async function createFalabellaWebhook(
+  apiKey: string,
+  userId: string,
+  callbackUrl: string,
+  events: string[],
+  country = "CL"
+): Promise<unknown> {
+  const baseUrl = BASE_URLS[country] || BASE_URLS.CL;
+  const url = buildSignedUrl(baseUrl, "CreateWebhook", userId, apiKey);
+  const client = getClient(userId);
+  const body = { CallbackUrl: callbackUrl, Events: events };
+  const { data } = await client.post(url, body, {
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+  });
+  const errorCode = data?.Head?.ErrorCode ?? data?.ErrorResponse?.Head?.ErrorCode;
+  if (errorCode) {
+    const msg = data?.Head?.ErrorMessage ?? data?.ErrorResponse?.Head?.ErrorMessage ?? JSON.stringify(data);
+    throw new Error(`Falabella CreateWebhook error ${errorCode}: ${msg}`);
+  }
+  return data;
+}
+
+// DeleteWebhook — elimina un webhook por ID.
+export async function deleteFalabellaWebhook(
+  apiKey: string,
+  userId: string,
+  webhookId: string,
+  country = "CL"
+): Promise<unknown> {
+  const baseUrl = BASE_URLS[country] || BASE_URLS.CL;
+  const url = buildSignedUrl(baseUrl, "DeleteWebhook", userId, apiKey, { WebhookId: webhookId });
+  const client = getClient(userId);
+  const { data } = await client.post(url);
+  return data;
+}
+
+// GetOrderItems helper público — usado por el webhook receiver para saber
+// qué SKUs/cantidades descontar cuando llega order_created.
+export async function getFalabellaOrderItemsForDiscount(
+  apiKey: string,
+  userId: string,
+  orderId: string,
+  country = "CL"
+): Promise<{ sku: string; quantity: number }[]> {
+  const items = await getFalabellaOrderItems(apiKey, userId, orderId, country);
+  // Agrupar por SKU y sumar cantidades (cada línea ya viene con quantity=1 o N)
+  const map = new Map<string, number>();
+  for (const it of items) {
+    if (!it.sku) continue;
+    map.set(it.sku, (map.get(it.sku) || 0) + (it.quantity || 1));
+  }
+  return [...map.entries()].map(([sku, quantity]) => ({ sku, quantity }));
+}
+
 // ─── Internal / polling ───────────────────────────────────────────────────────
 
 // Poll for pending orders — used as backup to webhooks
