@@ -613,7 +613,9 @@ export async function getFalabellaWebhooks(
   return data;
 }
 
-// CreateWebhook — registra un webhook. Body JSON: { CallbackUrl, Events: [...] }.
+// CreateWebhook — registra un webhook.
+// Formato body (Lazada/SellerCenter): form-urlencoded payload={json}
+// donde json = { CallbackUrl, Events: [...] }
 export async function createFalabellaWebhook(
   apiKey: string,
   userId: string,
@@ -624,9 +626,9 @@ export async function createFalabellaWebhook(
   const baseUrl = BASE_URLS[country] || BASE_URLS.CL;
   const url = buildSignedUrl(baseUrl, "CreateWebhook", userId, apiKey);
   const client = getClient(userId);
-  const body = { CallbackUrl: callbackUrl, Events: events };
-  const { data } = await client.post(url, body, {
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
+  const payload = JSON.stringify({ CallbackUrl: callbackUrl, Events: events });
+  const { data } = await client.post(url, `payload=${encodeURIComponent(payload)}`, {
+    headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
   });
   const errorCode = data?.Head?.ErrorCode ?? data?.ErrorResponse?.Head?.ErrorCode;
   if (errorCode) {

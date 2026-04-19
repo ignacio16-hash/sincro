@@ -21,10 +21,14 @@ export async function GET(req: NextRequest) {
 
   // ?register=1 → registra el webhook directamente (sin POST).
   //   También acepta ?events=onOrderCreated,onOrderItemsStatusChanged
+  //   ?callbackUrl=https://... fuerza la URL (útil si el proxy no pasa host)
   if (req.nextUrl.searchParams.get("register") === "1") {
     const eventsParam = req.nextUrl.searchParams.get("events");
     const events = eventsParam ? eventsParam.split(",").map((s) => s.trim()).filter(Boolean) : ["onOrderCreated"];
-    const callbackUrl = `${req.nextUrl.origin}/api/webhooks/falabella`;
+    const forwardedHost = req.headers.get("x-forwarded-host");
+    const forwardedProto = req.headers.get("x-forwarded-proto") || "https";
+    const publicOrigin = forwardedHost ? `${forwardedProto}://${forwardedHost}` : req.nextUrl.origin;
+    const callbackUrl = req.nextUrl.searchParams.get("callbackUrl") || `${publicOrigin}/api/webhooks/falabella`;
     try {
       const result = await createFalabellaWebhook(conf.apiKey, conf.userId, callbackUrl, events, country);
       return NextResponse.json({ ok: true, callbackUrl, events, result });
