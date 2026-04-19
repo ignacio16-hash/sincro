@@ -38,6 +38,7 @@ function failedSummary(failed: string[]): string {
 export async function refreshBsaleCatalog(
   onProgress?: (event: SyncProgressEvent) => void
 ): Promise<{ status: string; bsaleCount: number; matched: { falabella: number; ripley: number; paris: number }; errors: string[] }> {
+  const start = Date.now();
   const errors: string[] = [];
   const matched = { falabella: 0, ripley: 0, paris: 0 };
 
@@ -146,7 +147,7 @@ export async function refreshBsaleCatalog(
   // Un futuro read-back per-SKU podría ajustar esto.
   onProgress?.({ stage: "match_paris", message: "Paris: sin endpoint bulk, se pushea todo", percent: 90, status: "skipped" });
 
-  const duration = Date.now();
+  const duration = Date.now() - start;
   await logSync("catalog_refresh", "all", errors.length === 0 ? "success" : "partial",
     `Catálogo refrescado: Bsale=${bsaleSkus.length}, Falabella=${matched.falabella}, Ripley=${matched.ripley}`,
     { bsaleCount: bsaleSkus.length, matched, errors }, duration);
