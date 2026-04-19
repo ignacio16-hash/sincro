@@ -1,19 +1,112 @@
 @import "tailwindcss";
 
+/* ─── ZARA-inspired design system ───────────────────────────────────────────
+   · Black & white monochrome palette
+   · Sharp corners (no rounded edges, anywhere)
+   · Uppercase everywhere, thin/light default weight
+   · Bold reserved for titles & active states
+   · Fully responsive — works from 320px up
+   ─────────────────────────────────────────────────────────────────────── */
+
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  --bg: #ffffff;
+  --fg: #000000;
+  --muted: #8a8a8a;
+  --line: #e5e5e5;
+  --line-strong: #000000;
+  --surface: #ffffff;
+  --surface-alt: #f6f6f6;
+  --accent: #000000;
+  --danger: #c0392b;
+  --success: #1f7a3a;
+  --warn: #b7791f;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+* {
+  box-sizing: border-box;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
+html, body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: "Helvetica Neue", Helvetica, Arial, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-weight: 300;                /* thin by default — "delgadita" */
+  letter-spacing: 0.04em;
+  text-transform: uppercase;       /* todo en MAYÚSCULAS */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
+
+/* Titles & active states use bold weight */
+h1, h2, h3, h4, h5, h6,
+.font-bold, .font-semibold,
+[data-active="true"] {
+  font-weight: 700 !important;
+  letter-spacing: 0.06em;
+}
+
+/* Secondary / body copy remains thin */
+p, span, td, th, a, button, input, select, textarea, label, li, div {
+  font-weight: inherit;
+}
+
+/* Kill all rounded corners globally — ZARA is sharp edges only */
+[class*="rounded"],
+.rounded,
+.rounded-sm,
+.rounded-md,
+.rounded-lg,
+.rounded-xl,
+.rounded-2xl,
+.rounded-3xl,
+.rounded-full,
+.rounded-t, .rounded-b, .rounded-l, .rounded-r,
+.rounded-tl, .rounded-tr, .rounded-bl, .rounded-br,
+button, input, select, textarea, img {
+  border-radius: 0 !important;
+}
+
+/* Preserve raw case for code blocks / SKUs */
+code, .font-mono, [class*="font-mono"] {
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  font-family: "SF Mono", "Menlo", "Monaco", monospace;
+}
+
+/* Form elements: clean, minimal, sharp */
+input, select, textarea {
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  color: var(--fg);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--fg);
+  box-shadow: inset 0 -2px 0 0 var(--fg);
+}
+input::placeholder, textarea::placeholder {
+  color: var(--muted);
+  text-transform: uppercase;
+  font-weight: 300;
+}
+
+/* Buttons — minimalist ZARA style */
+button {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+button:disabled { cursor: not-allowed; }
+
+/* Thin scrollbars */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--surface-alt); }
+::-webkit-scrollbar-thumb { background: var(--line-strong); }
+
+/* Animations */
+@keyframes spin { to { transform: rotate(360deg); } }
 .animate-spin { animation: spin 1s linear infinite; }
 
 @keyframes pulse {
@@ -21,3 +114,9 @@ body {
   50% { opacity: .5; }
 }
 .animate-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+
+@keyframes slideIn {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+.slide-in { animation: slideIn 200ms ease-out; }

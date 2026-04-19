@@ -50,64 +50,68 @@ export default function SkuMatchPage() {
   const data = result ? result[market] : null;
 
   return (
-    <div className="p-8">
-      <div className="mb-8 flex items-start justify-between">
+    <div className="px-4 sm:px-6 lg:px-10 py-6 lg:py-10">
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6 lg:mb-10 pb-6 border-b border-black">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Match SKUs</h1>
-          <p className="text-slate-500 text-sm mt-1">Compara los SKUs de Bsale con los SKU Seller de Falabella y Ripley.</p>
+          <h1 className="text-2xl lg:text-3xl font-bold tracking-[0.15em]">Match SKUs</h1>
+          <p className="text-[11px] font-light tracking-widest text-neutral-500 mt-2">
+            Compara los SKUs de Bsale con los SKU Seller de Falabella y Ripley.
+          </p>
         </div>
         <button
           onClick={runMatch}
           disabled={loading}
-          className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-indigo-700 disabled:opacity-60 transition-colors"
+          className="w-full sm:w-auto bg-black text-white px-6 py-3 text-xs font-bold tracking-[0.2em] hover:bg-neutral-800 disabled:opacity-40 flex items-center justify-center gap-2"
         >
-          {loading
-            ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            : <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-          }
+          {loading && <span className="w-3 h-3 border border-white border-t-transparent animate-spin inline-block" />}
           {loading ? "Comparando..." : "Comparar SKUs"}
         </button>
       </div>
 
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">{error}</div>
+        <div className="mb-6 p-4 border border-black bg-black text-white text-xs font-light tracking-wider">
+          {error}
+        </div>
       )}
 
       {!result && !loading && !error && (
-        <div className="text-center py-20 text-slate-400">
-          <svg className="w-12 h-12 mx-auto mb-3 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-          </svg>
-          <p className="text-sm">Presiona "Comparar SKUs" para iniciar</p>
+        <div className="text-center py-20 text-neutral-400 font-light text-xs tracking-widest border border-black">
+          Presiona &quot;Comparar SKUs&quot; para iniciar
         </div>
       )}
 
       {result && s && (
         <>
           {/* Summary */}
-          <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-0 mb-6 border border-black">
             {[
-              { label: "Bsale", value: s.bsaleTotal, color: "text-blue-600" },
-              { label: "Falabella", value: s.falabellaTotal, color: "text-orange-600" },
-              { label: "Ripley", value: s.ripleyTotal, color: "text-purple-600" },
-              { label: "Match Falabella", value: s.falabellaMatched, color: "text-emerald-600" },
-              { label: "Match Ripley", value: s.ripleyMatched, color: "text-emerald-600" },
-              { label: "Solo Bsale", value: s.onlyBsale, color: "text-slate-500" },
-            ].map((c) => (
-              <div key={c.label} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 text-center">
-                <div className={`text-2xl font-bold ${c.color}`}>{c.value}</div>
-                <div className="text-xs text-slate-500 mt-1">{c.label}</div>
+              { label: "Bsale", value: s.bsaleTotal },
+              { label: "Falabella", value: s.falabellaTotal },
+              { label: "Ripley", value: s.ripleyTotal },
+              { label: "Match Fal.", value: s.falabellaMatched },
+              { label: "Match Rip.", value: s.ripleyMatched },
+              { label: "Solo Bsale", value: s.onlyBsale },
+            ].map((c, i) => (
+              <div
+                key={c.label}
+                className={`p-4 text-center border-black ${i < 5 ? "border-b lg:border-b-0 lg:border-r" : ""} ${i < 3 ? "border-r" : "md:border-r md:last:border-r-0"} ${i % 2 === 1 ? "md:border-r-0 lg:border-r" : ""}`}
+              >
+                <div className="text-2xl lg:text-3xl font-bold">{c.value}</div>
+                <div className="text-[10px] font-light tracking-[0.2em] text-neutral-500 mt-2">{c.label}</div>
               </div>
             ))}
           </div>
 
           {/* Market selector */}
-          <div className="flex gap-2 mb-4">
-            {(["falabella", "ripley"] as Market[]).map((m) => (
+          <div className="flex gap-0 mb-4 border border-black">
+            {(["falabella", "ripley"] as Market[]).map((m, i) => (
               <button
                 key={m}
                 onClick={() => { setMarket(m); setTab("matched"); }}
-                className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors capitalize ${market === m ? "bg-indigo-600 text-white" : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"}`}
+                data-active={market === m}
+                className={`flex-1 px-4 py-3 text-xs tracking-[0.2em] ${i === 0 ? "border-r border-black" : ""} ${
+                  market === m ? "bg-black text-white font-bold" : "font-light hover:bg-neutral-100"
+                }`}
               >
                 {m === "falabella" ? "Falabella" : "Ripley (Mirakl)"}
               </button>
@@ -115,17 +119,20 @@ export default function SkuMatchPage() {
           </div>
 
           {/* Tabs + Table */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-            <div className="flex border-b border-slate-100">
+          <div className="border border-black overflow-hidden">
+            <div className="flex border-b border-black overflow-x-auto">
               {([
                 { key: "matched" as Tab, label: `Con match (${market === "falabella" ? s.falabellaMatched : s.ripleyMatched})` },
                 { key: "onlyMarket" as Tab, label: `Solo ${market === "falabella" ? "Falabella" : "Ripley"} (${data ? data.onlyMarket.length : 0})` },
                 { key: "onlyBsale" as Tab, label: `Solo Bsale (${s.onlyBsale})` },
-              ]).map((t) => (
+              ]).map((t, i) => (
                 <button
                   key={t.key}
                   onClick={() => setTab(t.key)}
-                  className={`px-5 py-3 text-sm font-medium transition-colors ${tab === t.key ? "text-indigo-600 border-b-2 border-indigo-600" : "text-slate-500 hover:text-slate-700"}`}
+                  data-active={tab === t.key}
+                  className={`px-5 py-3 text-[11px] tracking-[0.2em] whitespace-nowrap ${i < 2 ? "border-r border-black" : ""} ${
+                    tab === t.key ? "font-bold bg-black text-white" : "font-light hover:bg-neutral-100"
+                  }`}
                 >
                   {t.label}
                 </button>
@@ -135,25 +142,29 @@ export default function SkuMatchPage() {
             <div className="overflow-x-auto">
               {tab === "matched" && data && (
                 <table className="w-full text-sm">
-                  <thead><tr className="bg-slate-50 text-left">
-                    <th className="px-5 py-3 font-medium text-slate-600">SKU</th>
-                    <th className="px-5 py-3 font-medium text-slate-600">Nombre</th>
-                    <th className="px-5 py-3 font-medium text-slate-600 text-right">Stock Bsale</th>
-                    <th className="px-5 py-3 font-medium text-slate-600 text-right">Stock {market === "falabella" ? "Falabella" : "Ripley"}</th>
-                  </tr></thead>
-                  <tbody className="divide-y divide-slate-50">
+                  <thead>
+                    <tr className="border-b border-black text-left">
+                      <th className="px-5 py-3 text-[10px] font-bold tracking-[0.2em]">SKU</th>
+                      <th className="px-5 py-3 text-[10px] font-bold tracking-[0.2em]">Nombre</th>
+                      <th className="px-5 py-3 text-[10px] font-bold tracking-[0.2em] text-right">Stock Bsale</th>
+                      <th className="px-5 py-3 text-[10px] font-bold tracking-[0.2em] text-right">
+                        Stock {market === "falabella" ? "Falabella" : "Ripley"}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
                     {data.matched.map((r) => (
-                      <tr key={r.sku} className="hover:bg-slate-50">
-                        <td className="px-5 py-3 font-mono text-indigo-600">{r.sku}</td>
-                        <td className="px-5 py-3 text-slate-700 max-w-xs truncate">{r.name}</td>
-                        <td className="px-5 py-3 text-right font-semibold text-slate-800">{r.bsaleStock}</td>
-                        <td className="px-5 py-3 text-right font-semibold text-orange-600">
+                      <tr key={r.sku} className="border-b border-neutral-100 hover:bg-neutral-50">
+                        <td className="px-5 py-3 font-mono text-xs font-bold">{r.sku}</td>
+                        <td className="px-5 py-3 text-xs font-light tracking-wider max-w-xs truncate">{r.name}</td>
+                        <td className="px-5 py-3 text-right text-xs font-bold">{r.bsaleStock}</td>
+                        <td className="px-5 py-3 text-right text-xs font-bold">
                           {market === "falabella" ? r.falabellaStock : r.ripleyStock}
                         </td>
                       </tr>
                     ))}
                     {data.matched.length === 0 && (
-                      <tr><td colSpan={4} className="px-5 py-8 text-center text-slate-400">Sin matches</td></tr>
+                      <tr><td colSpan={4} className="px-5 py-8 text-center text-neutral-400 font-light text-xs tracking-widest">Sin matches</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -161,23 +172,25 @@ export default function SkuMatchPage() {
 
               {tab === "onlyMarket" && data && (
                 <table className="w-full text-sm">
-                  <thead><tr className="bg-slate-50 text-left">
-                    <th className="px-5 py-3 font-medium text-slate-600">SKU Seller</th>
-                    <th className="px-5 py-3 font-medium text-slate-600">Nombre</th>
-                    <th className="px-5 py-3 font-medium text-slate-600 text-right">Stock</th>
-                  </tr></thead>
-                  <tbody className="divide-y divide-slate-50">
+                  <thead>
+                    <tr className="border-b border-black text-left">
+                      <th className="px-5 py-3 text-[10px] font-bold tracking-[0.2em]">SKU Seller</th>
+                      <th className="px-5 py-3 text-[10px] font-bold tracking-[0.2em]">Nombre</th>
+                      <th className="px-5 py-3 text-[10px] font-bold tracking-[0.2em] text-right">Stock</th>
+                    </tr>
+                  </thead>
+                  <tbody>
                     {data.onlyMarket.map((r) => (
-                      <tr key={r.sku} className="hover:bg-slate-50">
-                        <td className="px-5 py-3 font-mono text-amber-600">{r.sku}</td>
-                        <td className="px-5 py-3 text-slate-700 max-w-xs truncate">{r.name}</td>
-                        <td className="px-5 py-3 text-right font-semibold text-slate-800">
+                      <tr key={r.sku} className="border-b border-neutral-100 hover:bg-neutral-50">
+                        <td className="px-5 py-3 font-mono text-xs font-bold">{r.sku}</td>
+                        <td className="px-5 py-3 text-xs font-light tracking-wider max-w-xs truncate">{r.name}</td>
+                        <td className="px-5 py-3 text-right text-xs font-bold">
                           {market === "falabella" ? r.falabellaStock : r.ripleyStock}
                         </td>
                       </tr>
                     ))}
                     {data.onlyMarket.length === 0 && (
-                      <tr><td colSpan={3} className="px-5 py-8 text-center text-slate-400">Todos los SKUs hacen match con Bsale</td></tr>
+                      <tr><td colSpan={3} className="px-5 py-8 text-center text-neutral-400 font-light text-xs tracking-widest">Todos los SKUs hacen match con Bsale</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -185,21 +198,23 @@ export default function SkuMatchPage() {
 
               {tab === "onlyBsale" && (
                 <table className="w-full text-sm">
-                  <thead><tr className="bg-slate-50 text-left">
-                    <th className="px-5 py-3 font-medium text-slate-600">SKU Bsale</th>
-                    <th className="px-5 py-3 font-medium text-slate-600">Nombre</th>
-                    <th className="px-5 py-3 font-medium text-slate-600 text-right">Stock Bsale</th>
-                  </tr></thead>
-                  <tbody className="divide-y divide-slate-50">
+                  <thead>
+                    <tr className="border-b border-black text-left">
+                      <th className="px-5 py-3 text-[10px] font-bold tracking-[0.2em]">SKU Bsale</th>
+                      <th className="px-5 py-3 text-[10px] font-bold tracking-[0.2em]">Nombre</th>
+                      <th className="px-5 py-3 text-[10px] font-bold tracking-[0.2em] text-right">Stock Bsale</th>
+                    </tr>
+                  </thead>
+                  <tbody>
                     {result.onlyBsale.map((r) => (
-                      <tr key={r.sku} className="hover:bg-slate-50">
-                        <td className="px-5 py-3 font-mono text-slate-500">{r.sku}</td>
-                        <td className="px-5 py-3 text-slate-700 max-w-xs truncate">{r.name}</td>
-                        <td className="px-5 py-3 text-right font-semibold text-slate-800">{r.bsaleStock}</td>
+                      <tr key={r.sku} className="border-b border-neutral-100 hover:bg-neutral-50">
+                        <td className="px-5 py-3 font-mono text-xs font-bold">{r.sku}</td>
+                        <td className="px-5 py-3 text-xs font-light tracking-wider max-w-xs truncate">{r.name}</td>
+                        <td className="px-5 py-3 text-right text-xs font-bold">{r.bsaleStock}</td>
                       </tr>
                     ))}
                     {result.onlyBsale.length === 0 && (
-                      <tr><td colSpan={3} className="px-5 py-8 text-center text-slate-400">Todos los SKUs de Bsale hacen match</td></tr>
+                      <tr><td colSpan={3} className="px-5 py-8 text-center text-neutral-400 font-light text-xs tracking-widest">Todos los SKUs de Bsale hacen match</td></tr>
                     )}
                   </tbody>
                 </table>

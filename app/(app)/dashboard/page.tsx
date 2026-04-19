@@ -34,31 +34,17 @@ const platformLabels: Record<string, string> = {
   ripley: "Ripley",
 };
 
-const platformColors: Record<string, string> = {
-  bsale: "bg-blue-500",
-  paris: "bg-green-500",
-  falabella: "bg-orange-500",
-  ripley: "bg-purple-500",
-};
-
-const statusColors: Record<string, string> = {
-  success: "bg-emerald-100 text-emerald-800",
-  error: "bg-red-100 text-red-800",
-  partial: "bg-amber-100 text-amber-800",
+const statusLabels: Record<string, string> = {
+  success: "Éxito",
+  error: "Error",
+  partial: "Parcial",
 };
 
 const progressStatusIcon: Record<string, string> = {
   ok: "✓",
-  partial: "⚠",
+  partial: "!",
   error: "✗",
   skipped: "—",
-};
-
-const progressStatusColor: Record<string, string> = {
-  ok: "text-emerald-600",
-  partial: "text-amber-600",
-  error: "text-red-600",
-  skipped: "text-slate-400",
 };
 
 export default function DashboardPage() {
@@ -81,7 +67,6 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Cleanup EventSource on unmount
   useEffect(() => {
     return () => { esRef.current?.close(); };
   }, []);
@@ -99,27 +84,18 @@ export default function DashboardPage() {
     es.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-
         if (data.type === "done") {
-          setSyncing(false);
-          es.close();
-          load();
-          return;
+          setSyncing(false); es.close(); load(); return;
         }
-
         if (data.type === "error") {
           setSyncing(false);
           setSyncResult({ ok: false, message: data.message || "Error desconocido" });
-          es.close();
-          return;
+          es.close(); return;
         }
-
-        // SyncProgressEvent
         if (typeof data.percent === "number") {
           setCurrentPercent(data.percent);
           if (data.stage !== "init") {
             setProgressLines((prev) => {
-              // Replace the last line for the same stage (update in-place)
               const existing = prev.findIndex((l) => l.stage === data.stage);
               if (existing >= 0) {
                 const next = [...prev];
@@ -130,15 +106,10 @@ export default function DashboardPage() {
             });
           }
           if (data.percent === 100 && data.status) {
-            setSyncResult({
-              ok: data.status !== "error",
-              message: data.message,
-            });
+            setSyncResult({ ok: data.status !== "error", message: data.message });
           }
         }
-      } catch {
-        // ignore parse errors
-      }
+      } catch { /* ignore */ }
     };
 
     es.onerror = () => {
@@ -150,155 +121,137 @@ export default function DashboardPage() {
 
   if (!data) {
     return (
-      <div className="flex items-center justify-center h-full min-h-[400px]">
-        <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="w-6 h-6 border-2 border-black border-t-transparent animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="p-8">
+    <div className="px-4 sm:px-6 lg:px-10 py-6 lg:py-10">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-8 lg:mb-12 pb-6 border-b border-black">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-          <p className="text-slate-500 text-sm mt-1">
-            Sincronización automática cada 15 minutos · Ventas detectadas cada 2 minutos
+          <h1 className="text-2xl lg:text-3xl font-bold tracking-[0.15em]">Dashboard</h1>
+          <p className="text-[11px] font-light tracking-widest text-neutral-500 mt-2">
+            Sync automática cada 15 min · Ventas detectadas cada 2 min
           </p>
         </div>
         <button
           onClick={handleManualSync}
           disabled={syncing}
-          className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-medium text-sm hover:bg-indigo-700 disabled:opacity-60 transition-colors"
+          className="w-full sm:w-auto bg-black text-white px-8 py-3 text-xs font-bold tracking-[0.2em] hover:bg-neutral-800 disabled:opacity-40 flex items-center justify-center gap-3"
         >
-          <svg
-            className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
+          {syncing ? (
+            <span className="w-3 h-3 border border-white border-t-transparent animate-spin inline-block" />
+          ) : null}
           {syncing ? "Sincronizando..." : "Sync Manual"}
         </button>
       </div>
 
-      {/* Real-time progress panel */}
+      {/* Real-time progress */}
       {syncing && (
-        <div className="mb-6 bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+        <div className="mb-6 border border-black p-5">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-sm font-semibold text-slate-700">Sincronizando en tiempo real</p>
-            <span className="text-sm font-bold text-indigo-600">{currentPercent}%</span>
+            <p className="text-[11px] font-bold tracking-[0.2em]">Sincronizando</p>
+            <span className="text-sm font-bold">{currentPercent}%</span>
           </div>
-          {/* Progress bar */}
-          <div className="w-full bg-slate-100 rounded-full h-2 mb-4">
+          <div className="w-full h-[2px] bg-neutral-200 mb-5">
             <div
-              className="bg-indigo-500 h-2 rounded-full transition-all duration-300"
+              className="bg-black h-[2px] transition-all duration-300"
               style={{ width: `${currentPercent}%` }}
             />
           </div>
-          {/* Stage lines */}
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             {progressLines.map((line, i) => (
-              <div key={i} className="flex items-center gap-2 text-sm">
-                {line.status ? (
-                  <span className={`font-bold w-4 text-center ${progressStatusColor[line.status] || "text-slate-400"}`}>
-                    {progressStatusIcon[line.status] || "·"}
-                  </span>
-                ) : (
-                  <span className="w-4 flex justify-center">
-                    <span className="w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin inline-block" />
-                  </span>
-                )}
-                <span className={line.status ? "text-slate-600" : "text-slate-800 font-medium"}>
+              <div key={i} className="flex items-center gap-3 text-xs tracking-wider">
+                <span className="w-4 text-center font-bold">
+                  {line.status ? (progressStatusIcon[line.status] || "·") : (
+                    <span className="w-2 h-2 border border-black border-t-transparent animate-spin inline-block" />
+                  )}
+                </span>
+                <span className={line.status ? "font-light text-neutral-600" : "font-bold"}>
                   {line.message}
                 </span>
               </div>
             ))}
             {progressLines.length === 0 && (
-              <p className="text-sm text-slate-400">Iniciando...</p>
+              <p className="text-xs font-light text-neutral-400 tracking-wider">Iniciando...</p>
             )}
           </div>
         </div>
       )}
 
-      {/* Final result message */}
+      {/* Final result */}
       {!syncing && syncResult && (
-        <div className={`mb-6 p-4 rounded-xl text-sm font-medium ${
-          syncResult.ok
-            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-            : "bg-red-50 text-red-700 border border-red-200"
+        <div className={`mb-6 p-4 border text-xs tracking-wider font-light ${
+          syncResult.ok ? "border-black bg-neutral-50" : "border-black bg-black text-white"
         }`}>
           {syncResult.message}
         </div>
       )}
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
-          <p className="text-slate-500 text-sm font-medium">Total SKUs</p>
-          <p className="text-4xl font-bold text-slate-900 mt-2">{data.totalSkus.toLocaleString()}</p>
-          <p className="text-slate-400 text-xs mt-2">Productos en Bsale</p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-0 mb-8 border border-black">
+        <div className="p-6 border-b sm:border-b-0 sm:border-r border-black">
+          <p className="text-[10px] font-light tracking-[0.25em] text-neutral-500">Total SKUs</p>
+          <p className="text-4xl lg:text-5xl font-bold mt-3">{data.totalSkus.toLocaleString()}</p>
+          <p className="text-[10px] font-light tracking-widest text-neutral-400 mt-2">Productos Bsale</p>
         </div>
-
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
-          <p className="text-slate-500 text-sm font-medium">Último Sync</p>
-          <p className="text-lg font-bold text-slate-900 mt-2">
+        <div className="p-6 border-b sm:border-b-0 sm:border-r border-black">
+          <p className="text-[10px] font-light tracking-[0.25em] text-neutral-500">Último Sync</p>
+          <p className="text-base lg:text-lg font-bold mt-3">
             {data.lastSync ? formatDate(data.lastSync) : "Nunca"}
           </p>
           {data.lastSyncStatus && (
-            <span className={`inline-block mt-2 text-xs font-medium px-2 py-0.5 rounded-full ${statusColors[data.lastSyncStatus] || "bg-slate-100 text-slate-600"}`}>
-              {data.lastSyncStatus}
-            </span>
+            <p className="text-[10px] font-light tracking-widest text-neutral-400 mt-2">
+              {statusLabels[data.lastSyncStatus] || data.lastSyncStatus}
+            </p>
           )}
         </div>
-
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
-          <p className="text-slate-500 text-sm font-medium">Errores (24h)</p>
-          <p className={`text-4xl font-bold mt-2 ${data.errorCount > 0 ? "text-red-600" : "text-emerald-600"}`}>
-            {data.errorCount}
-          </p>
-          <p className="text-slate-400 text-xs mt-2">
-            {data.errorCount === 0 ? "Todo funcionando bien" : "Revisar logs"}
+        <div className="p-6">
+          <p className="text-[10px] font-light tracking-[0.25em] text-neutral-500">Errores (24h)</p>
+          <p className="text-4xl lg:text-5xl font-bold mt-3">{data.errorCount}</p>
+          <p className="text-[10px] font-light tracking-widest text-neutral-400 mt-2">
+            {data.errorCount === 0 ? "Todo bien" : "Revisar logs"}
           </p>
         </div>
       </div>
 
       {/* Platform Status */}
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 mb-8">
-        <h2 className="font-semibold text-slate-900 mb-4">Estado de Plataformas</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {data.platforms.map((p) => (
-            <div key={p.platform} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl">
-              <div className={`w-3 h-3 rounded-full ${platformColors[p.platform]}`} />
-              <div>
-                <p className="font-medium text-sm text-slate-800">{platformLabels[p.platform]}</p>
-                <p className={`text-xs font-medium ${p.isActive ? "text-emerald-600" : "text-slate-400"}`}>
-                  {p.isActive ? "Conectado" : "Sin configurar"}
-                </p>
-              </div>
+      <div className="border border-black p-6 mb-8">
+        <h2 className="text-xs font-bold tracking-[0.2em] mb-5">Estado Plataformas</h2>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-0 border border-black">
+          {data.platforms.map((p, idx) => (
+            <div
+              key={p.platform}
+              className={`p-4 ${idx < data.platforms.length - 1 ? "border-b lg:border-b-0 lg:border-r border-black" : ""}`}
+            >
+              <p className="text-xs font-bold tracking-widest">{platformLabels[p.platform]}</p>
+              <p className={`text-[10px] font-light tracking-widest mt-2 ${p.isActive ? "text-black" : "text-neutral-400"}`}>
+                {p.isActive ? "● Conectado" : "○ Sin configurar"}
+              </p>
             </div>
           ))}
         </div>
       </div>
 
       {/* Webhook URLs */}
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 mb-8">
-        <h2 className="font-semibold text-slate-900 mb-1">URLs de Webhooks</h2>
-        <p className="text-slate-500 text-sm mb-4">
-          Configura estas URLs en cada marketplace. Ripley y Falabella también son detectados por polling automático cada 2 min.
+      <div className="border border-black p-6 mb-8">
+        <h2 className="text-xs font-bold tracking-[0.2em] mb-1">URLs de Webhooks</h2>
+        <p className="text-[11px] font-light tracking-wider text-neutral-500 mb-5">
+          Configura en cada marketplace. Ripley y Falabella también vía polling cada 2 min.
         </p>
-        <div className="space-y-2">
+        <div className="divide-y divide-neutral-200 border border-black">
           {[
-            { label: "Bsale (cambios de stock)", path: "/api/webhooks/bsale" },
+            { label: "Bsale (stock)", path: "/api/webhooks/bsale" },
             { label: "Paris (órdenes)", path: "/api/webhooks/paris" },
             { label: "Falabella (órdenes)", path: "/api/webhooks/falabella" },
             { label: "Ripley (órdenes)", path: "/api/webhooks/ripley" },
           ].map((wh) => (
-            <div key={wh.path} className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
-              <span className="text-slate-600 text-sm w-48 shrink-0">{wh.label}</span>
-              <code className="text-indigo-600 text-sm font-mono bg-indigo-50 px-3 py-1 rounded">
+            <div key={wh.path} className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 p-3">
+              <span className="text-[11px] font-bold tracking-widest md:w-48 shrink-0">{wh.label}</span>
+              <code className="text-[11px] font-mono break-all text-neutral-700">
                 {typeof window !== "undefined" ? window.location.origin : ""}{wh.path}
               </code>
             </div>
@@ -307,25 +260,34 @@ export default function DashboardPage() {
       </div>
 
       {/* Recent Logs */}
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold text-slate-900">Actividad Reciente</h2>
-          <a href="/logs" className="text-indigo-600 text-sm hover:underline">Ver todos →</a>
+      <div className="border border-black p-6">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-xs font-bold tracking-[0.2em]">Actividad Reciente</h2>
+          <a href="/logs" className="text-[11px] font-bold tracking-widest underline underline-offset-4">
+            Ver todos →
+          </a>
         </div>
         {data.recentLogs.length === 0 ? (
-          <p className="text-slate-400 text-sm text-center py-6">Sin actividad reciente</p>
+          <p className="text-xs font-light text-neutral-400 text-center py-6 tracking-wider">
+            Sin actividad reciente
+          </p>
         ) : (
-          <div className="space-y-2">
+          <div className="divide-y divide-neutral-200 border border-black">
             {data.recentLogs.map((log) => (
-              <div key={log.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusColors[log.status] || "bg-slate-100 text-slate-600"}`}>
-                    {log.status}
+              <div
+                key={log.id}
+                className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 p-3"
+              >
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-[10px] font-bold tracking-[0.2em] border border-black px-2 py-0.5">
+                    {statusLabels[log.status] || log.status}
                   </span>
-                  <span className="text-slate-600 text-sm capitalize">{platformLabels[log.platform] || log.platform}</span>
-                  <span className="text-slate-500 text-sm">{log.message}</span>
+                  <span className="text-xs font-bold tracking-widest">{platformLabels[log.platform] || log.platform}</span>
+                  <span className="text-[11px] font-light tracking-wider text-neutral-600">{log.message}</span>
                 </div>
-                <span className="text-slate-400 text-xs whitespace-nowrap">{formatDate(log.createdAt)}</span>
+                <span className="text-[10px] font-light tracking-widest text-neutral-400 shrink-0">
+                  {formatDate(log.createdAt)}
+                </span>
               </div>
             ))}
           </div>

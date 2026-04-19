@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, Fragment } from "react";
 import { formatDate } from "@/lib/utils";
 
 interface Log {
@@ -14,16 +14,16 @@ interface Log {
   createdAt: string;
 }
 
-const statusColors: Record<string, string> = {
-  success: "bg-emerald-100 text-emerald-800",
-  error: "bg-red-100 text-red-800",
-  partial: "bg-amber-100 text-amber-800",
-};
-
 const typeLabels: Record<string, string> = {
   full_sync: "Sync Completo",
   webhook: "Webhook",
   manual: "Manual",
+};
+
+const statusLabels: Record<string, string> = {
+  success: "Éxito",
+  error: "Error",
+  partial: "Parcial",
 };
 
 const platformLabels: Record<string, string> = {
@@ -57,13 +57,8 @@ export default function LogsPage() {
     setLoading(false);
   }, [page, platform, status]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [platform, status]);
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { setPage(1); }, [platform, status]);
 
   function toggleExpand(id: string) {
     setExpanded((prev) => {
@@ -80,19 +75,19 @@ export default function LogsPage() {
   }
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
+    <div className="px-4 sm:px-6 lg:px-10 py-6 lg:py-10">
+      <div className="flex flex-col gap-4 mb-6 lg:mb-10 pb-6 border-b border-black">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Logs de Sincronización</h1>
-          <p className="text-slate-500 text-sm mt-1">
+          <h1 className="text-2xl lg:text-3xl font-bold tracking-[0.15em]">Logs de Sincronización</h1>
+          <p className="text-[11px] font-light tracking-widest text-neutral-500 mt-2">
             {total.toLocaleString()} registros de actividad
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-col sm:flex-row gap-3">
           <select
             value={platform}
             onChange={(e) => setPlatform(e.target.value)}
-            className="px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="flex-1 sm:flex-none px-4 py-3 text-xs tracking-widest"
           >
             <option value="">Todas las plataformas</option>
             <option value="bsale">Bsale</option>
@@ -104,7 +99,7 @@ export default function LogsPage() {
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value)}
-            className="px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="flex-1 sm:flex-none px-4 py-3 text-xs tracking-widest"
           >
             <option value="">Todos los estados</option>
             <option value="success">Éxito</option>
@@ -113,99 +108,95 @@ export default function LogsPage() {
           </select>
           <button
             onClick={load}
-            className="px-4 py-2.5 border border-slate-200 rounded-xl text-sm hover:bg-slate-50 transition-colors"
+            className="px-5 py-3 text-xs font-bold tracking-[0.2em] border border-black hover:bg-black hover:text-white"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
+            Actualizar
           </button>
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+      <div className="border border-black overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-100">
-                <th className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wider px-6 py-4 w-8" />
-                <th className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wider px-6 py-4">Estado</th>
-                <th className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wider px-6 py-4">Tipo</th>
-                <th className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wider px-6 py-4">Plataforma</th>
-                <th className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wider px-6 py-4">Mensaje</th>
-                <th className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wider px-6 py-4">Duración</th>
-                <th className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wider px-6 py-4">Fecha</th>
+              <tr className="border-b border-black">
+                <th className="text-left text-[10px] font-bold tracking-[0.2em] px-4 py-4 w-8" />
+                <th className="text-left text-[10px] font-bold tracking-[0.2em] px-4 lg:px-6 py-4">Estado</th>
+                <th className="text-left text-[10px] font-bold tracking-[0.2em] px-4 lg:px-6 py-4 hidden sm:table-cell">Tipo</th>
+                <th className="text-left text-[10px] font-bold tracking-[0.2em] px-4 lg:px-6 py-4">Plataforma</th>
+                <th className="text-left text-[10px] font-bold tracking-[0.2em] px-4 lg:px-6 py-4">Mensaje</th>
+                <th className="text-left text-[10px] font-bold tracking-[0.2em] px-4 lg:px-6 py-4 hidden md:table-cell">Duración</th>
+                <th className="text-left text-[10px] font-bold tracking-[0.2em] px-4 lg:px-6 py-4 hidden lg:table-cell">Fecha</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
+            <tbody>
               {loading ? (
                 Array.from({ length: 8 }).map((_, i) => (
-                  <tr key={i}>
+                  <tr key={i} className="border-b border-neutral-100">
                     {Array.from({ length: 7 }).map((_, j) => (
-                      <td key={j} className="px-6 py-4">
-                        <div className="h-4 bg-slate-100 rounded animate-pulse" />
+                      <td key={j} className="px-4 py-4">
+                        <div className="h-3 bg-neutral-100 animate-pulse" />
                       </td>
                     ))}
                   </tr>
                 ))
               ) : logs.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-16 text-slate-400">
+                  <td colSpan={7} className="text-center py-16 text-neutral-400 font-light text-xs tracking-widest">
                     Sin registros para los filtros seleccionados
                   </td>
                 </tr>
               ) : (
                 logs.map((log) => (
-                  <>
+                  <Fragment key={log.id}>
                     <tr
-                      key={log.id}
-                      className={`transition-colors ${hasFailed(log) ? "cursor-pointer hover:bg-slate-50" : ""}`}
+                      className={`border-b border-neutral-100 ${hasFailed(log) ? "cursor-pointer hover:bg-neutral-50" : ""}`}
                       onClick={() => hasFailed(log) && toggleExpand(log.id)}
                     >
-                      {/* Expand chevron */}
                       <td className="px-3 py-4 w-8 text-center">
                         {hasFailed(log) && (
-                          <span className={`text-slate-400 text-xs transition-transform inline-block ${expanded.has(log.id) ? "rotate-90" : ""}`}>
+                          <span className={`text-neutral-400 text-xs inline-block transition-transform ${expanded.has(log.id) ? "rotate-90" : ""}`}>
                             ▶
                           </span>
                         )}
                       </td>
-                      <td className="px-6 py-4">
-                        <span className={`inline-block text-xs font-medium px-2.5 py-1 rounded-full ${statusColors[log.status] || "bg-slate-100 text-slate-600"}`}>
-                          {log.status}
+                      <td className="px-4 lg:px-6 py-4">
+                        <span className="inline-block text-[10px] font-bold tracking-[0.2em] border border-black px-2 py-0.5">
+                          {statusLabels[log.status] || log.status}
                         </span>
                       </td>
-                      <td className="px-6 py-4">
-                        <span className="text-sm text-slate-700">{typeLabels[log.type] || log.type}</span>
+                      <td className="px-4 lg:px-6 py-4 hidden sm:table-cell">
+                        <span className="text-xs font-light tracking-wider">{typeLabels[log.type] || log.type}</span>
                       </td>
-                      <td className="px-6 py-4">
-                        <span className="text-sm font-medium text-slate-800">{platformLabels[log.platform] || log.platform}</span>
+                      <td className="px-4 lg:px-6 py-4">
+                        <span className="text-xs font-bold tracking-widest">{platformLabels[log.platform] || log.platform}</span>
                       </td>
-                      <td className="px-6 py-4 max-w-sm">
-                        <span className="text-sm text-slate-600 truncate block">{log.message || "—"}</span>
+                      <td className="px-4 lg:px-6 py-4 max-w-sm">
+                        <span className="text-xs font-light tracking-wider truncate block">{log.message || "—"}</span>
                       </td>
-                      <td className="px-6 py-4">
-                        <span className="text-xs text-slate-400">
+                      <td className="px-4 lg:px-6 py-4 hidden md:table-cell">
+                        <span className="text-[10px] font-light tracking-widest text-neutral-400">
                           {log.duration ? `${(log.duration / 1000).toFixed(1)}s` : "—"}
                         </span>
                       </td>
-                      <td className="px-6 py-4">
-                        <span className="text-xs text-slate-400 whitespace-nowrap">{formatDate(log.createdAt)}</span>
+                      <td className="px-4 lg:px-6 py-4 hidden lg:table-cell">
+                        <span className="text-[10px] font-light tracking-widest text-neutral-400 whitespace-nowrap">
+                          {formatDate(log.createdAt)}
+                        </span>
                       </td>
                     </tr>
 
-                    {/* Expandable failed SKUs row */}
                     {hasFailed(log) && expanded.has(log.id) && (
-                      <tr key={`${log.id}-detail`} className="bg-red-50">
-                        <td colSpan={7} className="px-8 py-3">
-                          <p className="text-xs font-semibold text-red-700 mb-2">
-                            SKUs con falla ({log.details!.failed!.length}):
+                      <tr className="bg-neutral-100 border-b border-neutral-200">
+                        <td colSpan={7} className="px-6 py-4">
+                          <p className="text-[10px] font-bold tracking-[0.2em] mb-3">
+                            SKUs con falla ({log.details!.failed!.length})
                           </p>
                           <div className="flex flex-wrap gap-1.5">
                             {log.details!.failed!.map((sku) => (
                               <span
                                 key={sku}
-                                className="font-mono text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded border border-red-200"
+                                className="font-mono text-xs border border-black px-2 py-0.5"
                               >
                                 {sku}
                               </span>
@@ -214,7 +205,7 @@ export default function LogsPage() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 ))
               )}
             </tbody>
@@ -222,22 +213,22 @@ export default function LogsPage() {
         </div>
 
         {pages > 1 && (
-          <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100">
-            <p className="text-sm text-slate-500">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 lg:px-6 py-4 border-t border-black">
+            <p className="text-[11px] font-light tracking-widest text-neutral-500">
               Página {page} de {pages}
             </p>
             <div className="flex gap-2">
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="px-4 py-2 text-sm border border-slate-200 rounded-lg disabled:opacity-40 hover:bg-slate-50 transition-colors"
+                className="px-5 py-2 text-[11px] font-bold tracking-[0.2em] border border-black disabled:opacity-30 hover:bg-black hover:text-white"
               >
                 Anterior
               </button>
               <button
                 onClick={() => setPage((p) => Math.min(pages, p + 1))}
                 disabled={page === pages}
-                className="px-4 py-2 text-sm border border-slate-200 rounded-lg disabled:opacity-40 hover:bg-slate-50 transition-colors"
+                className="px-5 py-2 text-[11px] font-bold tracking-[0.2em] border border-black disabled:opacity-30 hover:bg-black hover:text-white"
               >
                 Siguiente
               </button>

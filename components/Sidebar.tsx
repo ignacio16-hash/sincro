@@ -2,119 +2,134 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 
 const nav = [
-  {
-    href: "/dashboard",
-    label: "Dashboard",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-          d="M3 7h18M3 12h18M3 17h18" />
-      </svg>
-    ),
-  },
-  {
-    href: "/stock",
-    label: "Stock",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-          d="M20 7l-8-4-8 4m16 0v10l-8 4-8-4V7" />
-      </svg>
-    ),
-  },
-  {
-    href: "/orders",
-    label: "Pedidos",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-          d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-      </svg>
-    ),
-  },
-  {
-    href: "/sku-match",
-    label: "Match SKUs",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-          d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-      </svg>
-    ),
-  },
-  {
-    href: "/logs",
-    label: "Logs",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-          d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-      </svg>
-    ),
-  },
-  {
-    href: "/settings",
-    label: "Configuración",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-          d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-      </svg>
-    ),
-  },
+  { href: "/dashboard", label: "Dashboard" },
+  { href: "/stock", label: "Stock" },
+  { href: "/orders", label: "Pedidos" },
+  { href: "/sku-match", label: "Match SKUs" },
+  { href: "/logs", label: "Logs" },
+  { href: "/settings", label: "Configuración" },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const [open, setOpen] = useState(false);
+
+  // Lock body scroll when drawer is open (mobile)
+  useEffect(() => {
+    if (open) document.body.style.overflow = "hidden";
+    else document.body.style.overflow = "";
+    return () => { document.body.style.overflow = ""; };
+  }, [open]);
 
   return (
-    <aside className="w-64 min-h-screen bg-slate-900 flex flex-col">
-      {/* Logo */}
-      <div className="px-6 py-5 border-b border-slate-700">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center">
-            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+    <>
+      {/* ─── Mobile top bar ────────────────────────────────────────────── */}
+      <header className="lg:hidden sticky top-0 z-40 flex items-center justify-between border-b border-black bg-white px-4 h-14">
+        <Link href="/dashboard" className="font-bold text-sm tracking-widest">
+          SINCROSTOCK
+        </Link>
+        <button
+          aria-label="Menú"
+          onClick={() => setOpen((v) => !v)}
+          className="w-10 h-10 flex items-center justify-center border border-black"
+        >
+          {open ? (
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="square" strokeWidth={2} d="M6 6L18 18M6 18L18 6" />
             </svg>
+          ) : (
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="square" strokeWidth={2} d="M4 7h16M4 12h16M4 17h16" />
+            </svg>
+          )}
+        </button>
+      </header>
+
+      {/* ─── Mobile drawer ─────────────────────────────────────────────── */}
+      {open && (
+        <div
+          className="lg:hidden fixed inset-0 z-50 bg-white slide-in flex flex-col"
+          role="dialog"
+        >
+          <div className="flex items-center justify-between border-b border-black px-4 h-14">
+            <span className="font-bold text-sm tracking-widest">MENÚ</span>
+            <button
+              onClick={() => setOpen(false)}
+              aria-label="Cerrar"
+              className="w-10 h-10 flex items-center justify-center border border-black"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="square" strokeWidth={2} d="M6 6L18 18M6 18L18 6" />
+              </svg>
+            </button>
           </div>
-          <div>
-            <p className="text-white font-bold text-sm leading-tight">SincroStock</p>
-            <p className="text-slate-400 text-xs">Multi-Marketplace</p>
+          <nav className="flex-1 flex flex-col">
+            {nav.map((item) => {
+              const active = pathname.startsWith(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setOpen(false)}
+                  data-active={active}
+                  className={cn(
+                    "border-b border-neutral-200 px-6 py-5 text-base tracking-widest",
+                    active ? "bg-black text-white font-bold" : "font-light"
+                  )}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+          <div className="border-t border-black px-6 py-4 text-[10px] tracking-widest text-neutral-500">
+            SYNC CADA 15 MIN
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-1">
-        {nav.map((item) => {
-          const active = pathname.startsWith(item.href);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-                active
-                  ? "bg-indigo-600 text-white"
-                  : "text-slate-400 hover:text-white hover:bg-slate-800"
-              )}
-            >
-              {item.icon}
-              {item.label}
-            </Link>
-          );
-        })}
-      </nav>
+      {/* ─── Desktop sidebar ───────────────────────────────────────────── */}
+      <aside className="hidden lg:flex w-56 xl:w-64 shrink-0 min-h-screen bg-white border-r border-black flex-col">
+        <div className="px-6 h-20 flex items-center border-b border-black">
+          <Link href="/dashboard" className="block">
+            <p className="font-bold text-base tracking-[0.25em] leading-tight">SINCROSTOCK</p>
+            <p className="text-[10px] font-light tracking-[0.25em] text-neutral-500 mt-1">
+              MULTI-MARKETPLACE
+            </p>
+          </Link>
+        </div>
 
-      {/* Footer */}
-      <div className="px-4 py-4 border-t border-slate-700">
-        <p className="text-slate-500 text-xs text-center">Sync cada 15 minutos</p>
-      </div>
-    </aside>
+        <nav className="flex-1 flex flex-col">
+          {nav.map((item) => {
+            const active = pathname.startsWith(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                data-active={active}
+                className={cn(
+                  "px-6 py-4 text-xs tracking-[0.2em] border-b border-neutral-100 transition-colors",
+                  active
+                    ? "bg-black text-white font-bold"
+                    : "font-light text-black hover:bg-neutral-100"
+                )}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
+
+        <div className="px-6 py-4 border-t border-black">
+          <p className="text-[10px] font-light tracking-[0.25em] text-neutral-500">
+            SYNC CADA 15 MIN
+          </p>
+        </div>
+      </aside>
+    </>
   );
 }

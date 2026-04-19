@@ -46,23 +46,6 @@ interface OrdersData {
   ripley: RipleyOrder[];
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const stateColors: Record<string, string> = {
-  pending: "bg-amber-100 text-amber-800",
-  ready_to_ship: "bg-blue-100 text-blue-800",
-  shipped: "bg-emerald-100 text-emerald-800",
-  delivered: "bg-emerald-100 text-emerald-800",
-  canceled: "bg-red-100 text-red-800",
-  WAITING_ACCEPTANCE: "bg-amber-100 text-amber-800",
-  SHIPPING: "bg-blue-100 text-blue-800",
-  SHIPPED: "bg-emerald-100 text-emerald-800",
-  RECEIVED: "bg-emerald-100 text-emerald-800",
-  CLOSED: "bg-slate-100 text-slate-600",
-  REFUSED: "bg-red-100 text-red-800",
-  CANCELED: "bg-red-100 text-red-800",
-};
-
 function formatDate(s: string) {
   if (!s) return "—";
   try { return new Date(s).toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short" }); }
@@ -71,13 +54,11 @@ function formatDate(s: string) {
 
 function StateChip({ state }: { state: string }) {
   return (
-    <span className={`inline-block text-xs font-medium px-2.5 py-1 rounded-full ${stateColors[state] || "bg-slate-100 text-slate-600"}`}>
+    <span className="inline-block text-[10px] font-bold tracking-[0.2em] border border-black px-2 py-0.5">
       {state}
     </span>
   );
 }
-
-// ─── Label download ───────────────────────────────────────────────────────────
 
 function DownloadLabelButton({
   platform,
@@ -123,24 +104,15 @@ function DownloadLabelButton({
       <button
         onClick={download}
         disabled={loading}
-        className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg transition-colors disabled:opacity-60 font-medium"
+        className="text-[10px] font-bold tracking-[0.2em] px-3 py-2 border border-black hover:bg-black hover:text-white disabled:opacity-40 flex items-center gap-2"
       >
-        {loading ? (
-          <span className="w-3 h-3 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-        ) : (
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
-          </svg>
-        )}
+        {loading && <span className="w-2 h-2 border border-current border-t-transparent animate-spin inline-block" />}
         Etiqueta PDF
       </button>
-      {error && <p className="text-xs text-red-600">{error}</p>}
+      {error && <p className="text-[10px] font-light text-red-700 tracking-wider">{error}</p>}
     </div>
   );
 }
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
 
 type MarketTab = "ripley" | "falabella";
 
@@ -171,57 +143,55 @@ export default function OrdersPage() {
   const totalFalabella = data?.falabella.length ?? 0;
 
   return (
-    <div className="p-8">
+    <div className="px-4 sm:px-6 lg:px-10 py-6 lg:py-10">
       {/* Header */}
-      <div className="mb-8 flex items-start justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6 lg:mb-10 pb-6 border-b border-black">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Pedidos</h1>
-          <p className="text-slate-500 text-sm mt-1">
+          <h1 className="text-2xl lg:text-3xl font-bold tracking-[0.15em]">Pedidos</h1>
+          <p className="text-[11px] font-light tracking-widest text-neutral-500 mt-2">
             Órdenes recientes de Falabella y Ripley (Mirakl)
           </p>
         </div>
         <button
           onClick={load}
           disabled={loading}
-          className="flex items-center gap-2 px-4 py-2.5 border border-slate-200 rounded-xl text-sm hover:bg-slate-50 transition-colors disabled:opacity-60"
+          className="w-full sm:w-auto px-6 py-3 text-xs font-bold tracking-[0.2em] border border-black hover:bg-black hover:text-white disabled:opacity-40 flex items-center justify-center gap-2"
         >
-          <svg className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
+          {loading && <span className="w-3 h-3 border border-current border-t-transparent animate-spin inline-block" />}
           Actualizar
         </button>
       </div>
 
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">{error}</div>
+        <div className="mb-6 p-4 border border-black bg-black text-white text-xs font-light tracking-wider">
+          {error}
+        </div>
       )}
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 gap-4 mb-6">
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-          <p className="text-slate-500 text-sm">Pedidos Ripley</p>
-          <p className="text-3xl font-bold text-purple-600 mt-1">{totalRipley}</p>
+      {/* Summary */}
+      <div className="grid grid-cols-2 gap-0 mb-6 border border-black">
+        <div className="p-5 border-r border-black">
+          <p className="text-[10px] font-light tracking-[0.25em] text-neutral-500">Ripley</p>
+          <p className="text-3xl lg:text-4xl font-bold mt-2">{totalRipley}</p>
         </div>
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-          <p className="text-slate-500 text-sm">Pedidos Falabella</p>
-          <p className="text-3xl font-bold text-orange-600 mt-1">{totalFalabella}</p>
+        <div className="p-5">
+          <p className="text-[10px] font-light tracking-[0.25em] text-neutral-500">Falabella</p>
+          <p className="text-3xl lg:text-4xl font-bold mt-2">{totalFalabella}</p>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-4">
+      <div className="flex gap-0 mb-6 border border-black">
         {([
-          { key: "ripley" as MarketTab, label: `Ripley (Mirakl) (${totalRipley})`, color: "text-purple-700" },
-          { key: "falabella" as MarketTab, label: `Falabella (${totalFalabella})`, color: "text-orange-700" },
-        ]).map((t) => (
+          { key: "ripley" as MarketTab, label: `Ripley (${totalRipley})` },
+          { key: "falabella" as MarketTab, label: `Falabella (${totalFalabella})` },
+        ]).map((t, i) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
-              tab === t.key
-                ? "bg-indigo-600 text-white"
-                : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+            data-active={tab === t.key}
+            className={`flex-1 px-4 py-3 text-xs tracking-[0.2em] ${i === 0 ? "border-r border-black" : ""} ${
+              tab === t.key ? "bg-black text-white font-bold" : "font-light hover:bg-neutral-100"
             }`}
           >
             {t.label}
@@ -229,13 +199,12 @@ export default function OrdersPage() {
         ))}
       </div>
 
-      {/* Order list */}
       {loading && !data && (
         <div className="space-y-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="bg-white rounded-2xl border border-slate-100 p-6">
-              <div className="h-4 bg-slate-100 rounded animate-pulse mb-3 w-1/4" />
-              <div className="h-3 bg-slate-100 rounded animate-pulse w-1/2" />
+            <div key={i} className="border border-black p-6">
+              <div className="h-3 bg-neutral-100 animate-pulse mb-3 w-1/4" />
+              <div className="h-2 bg-neutral-100 animate-pulse w-1/2" />
             </div>
           ))}
         </div>
@@ -244,31 +213,28 @@ export default function OrdersPage() {
       {data && tab === "ripley" && (
         <div className="space-y-4">
           {data.ripley.length === 0 && (
-            <div className="text-center py-20 text-slate-400 bg-white rounded-2xl border border-slate-100">
-              <p className="text-sm">No hay pedidos de Ripley</p>
+            <div className="text-center py-20 text-neutral-400 font-light text-xs tracking-widest border border-black">
+              No hay pedidos de Ripley
             </div>
           )}
           {data.ripley.map((order) => (
-            <div key={order.orderId} className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-              {/* Order header */}
-              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-50 bg-slate-50/50">
-                <div className="flex items-center gap-3">
+            <div key={order.orderId} className="border border-black overflow-hidden">
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 px-4 lg:px-6 py-4 border-b border-black bg-neutral-50">
+                <div className="flex flex-wrap items-center gap-3">
                   <div className="flex flex-col">
-                    <span className="text-xs text-slate-400 font-medium">Orden #</span>
-                    <span className="font-mono text-base font-bold text-purple-700">{order.orderId}</span>
+                    <span className="text-[10px] font-light tracking-[0.25em] text-neutral-500">Orden #</span>
+                    <span className="font-mono text-sm font-bold mt-1">{order.orderId}</span>
                   </div>
                   <StateChip state={order.orderState} />
-                  <span className="text-xs text-slate-400">{formatDate(order.createdDate)}</span>
+                  <span className="text-[10px] font-light tracking-widest text-neutral-400">{formatDate(order.createdDate)}</span>
                 </div>
                 <DownloadLabelButton platform="ripley" orderId={order.orderId} />
               </div>
 
-              {/* Order lines */}
-              <div className="divide-y divide-slate-50">
+              <div className="divide-y divide-neutral-200">
                 {order.orderLines.map((line) => (
-                  <div key={line.orderLineId} className="flex items-center gap-4 px-6 py-4">
-                    {/* Product image */}
-                    <div className="w-16 h-16 rounded-lg bg-slate-100 flex-shrink-0 overflow-hidden">
+                  <div key={line.orderLineId} className="flex flex-col sm:flex-row sm:items-center gap-4 px-4 lg:px-6 py-4">
+                    <div className="w-16 h-16 bg-neutral-100 flex-shrink-0 overflow-hidden">
                       {line.imageUrl ? (
                         <img
                           src={line.imageUrl}
@@ -278,27 +244,26 @@ export default function OrdersPage() {
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
-                          <svg className="w-6 h-6 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                          <svg className="w-5 h-5 text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="square" strokeWidth={1.5}
                               d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                           </svg>
                         </div>
                       )}
                     </div>
 
-                    {/* Details */}
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-slate-900 text-sm truncate">{line.productTitle || "—"}</p>
-                      <p className="font-mono text-xs text-indigo-600 mt-0.5">{line.offerSku}</p>
+                      <p className="font-light text-xs tracking-wider truncate">{line.productTitle || "—"}</p>
+                      <p className="font-mono text-xs font-bold mt-1">{line.offerSku}</p>
                     </div>
 
-                    <div className="text-center">
-                      <p className="text-2xl font-bold text-slate-900">{line.quantity}</p>
-                      <p className="text-xs text-slate-400">unidades</p>
+                    <div className="flex sm:flex-col sm:text-center items-baseline gap-2">
+                      <p className="text-2xl font-bold">{line.quantity}</p>
+                      <p className="text-[10px] font-light tracking-widest text-neutral-400">Unidades</p>
                     </div>
 
-                    <div className="text-right">
-                      <p className="text-sm font-semibold text-slate-800">
+                    <div className="flex sm:flex-col items-start sm:items-end gap-2">
+                      <p className="text-xs font-bold tracking-wider">
                         {order.currencyCode} {line.price.toLocaleString("es-CL")}
                       </p>
                       <StateChip state={line.orderLineState} />
@@ -314,24 +279,23 @@ export default function OrdersPage() {
       {data && tab === "falabella" && (
         <div className="space-y-4">
           {data.falabella.length === 0 && (
-            <div className="text-center py-20 text-slate-400 bg-white rounded-2xl border border-slate-100">
-              <p className="text-sm">No hay pedidos de Falabella</p>
+            <div className="text-center py-20 text-neutral-400 font-light text-xs tracking-widest border border-black">
+              No hay pedidos de Falabella
             </div>
           )}
           {data.falabella.map((order) => (
-            <div key={order.orderId} className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-              {/* Order header */}
-              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-50 bg-slate-50/50">
-                <div className="flex items-center gap-3">
+            <div key={order.orderId} className="border border-black overflow-hidden">
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 px-4 lg:px-6 py-4 border-b border-black bg-neutral-50">
+                <div className="flex flex-wrap items-center gap-3">
                   <div className="flex flex-col">
-                    <span className="text-xs text-slate-400 font-medium">Orden #</span>
-                    <span className="font-mono text-base font-bold text-orange-700">{order.orderNumber}</span>
+                    <span className="text-[10px] font-light tracking-[0.25em] text-neutral-500">Orden #</span>
+                    <span className="font-mono text-sm font-bold mt-1">{order.orderNumber}</span>
                     {order.orderNumber !== order.orderId && (
-                      <span className="font-mono text-[10px] text-slate-400 mt-0.5">id: {order.orderId}</span>
+                      <span className="font-mono text-[10px] font-light text-neutral-400 mt-0.5">id: {order.orderId}</span>
                     )}
                   </div>
                   <StateChip state={order.status} />
-                  <span className="text-xs text-slate-400">{formatDate(order.createdAt)}</span>
+                  <span className="text-[10px] font-light tracking-widest text-neutral-400">{formatDate(order.createdAt)}</span>
                 </div>
                 <DownloadLabelButton
                   platform="falabella"
@@ -339,12 +303,10 @@ export default function OrdersPage() {
                 />
               </div>
 
-              {/* Items */}
-              <div className="divide-y divide-slate-50">
+              <div className="divide-y divide-neutral-200">
                 {order.items.map((item) => (
-                  <div key={item.orderItemId} className="flex items-center gap-4 px-6 py-4">
-                    {/* Product image (Falabella CDN best-effort, hidden on error) */}
-                    <div className="w-16 h-16 rounded-lg bg-slate-100 flex-shrink-0 overflow-hidden flex items-center justify-center">
+                  <div key={item.orderItemId} className="flex flex-col sm:flex-row sm:items-center gap-4 px-4 lg:px-6 py-4">
+                    <div className="w-16 h-16 bg-neutral-100 flex-shrink-0 overflow-hidden flex items-center justify-center">
                       {item.imageUrl ? (
                         <img
                           src={item.imageUrl}
@@ -358,33 +320,33 @@ export default function OrdersPage() {
                         />
                       ) : null}
                       <svg
-                        className="w-6 h-6 text-slate-300"
+                        className="w-5 h-5 text-neutral-300"
                         style={{ display: item.imageUrl ? "none" : "block" }}
                         fill="none" stroke="currentColor" viewBox="0 0 24 24"
                       >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                        <path strokeLinecap="square" strokeWidth={1.5}
                           d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                       </svg>
                     </div>
 
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-slate-900 text-sm truncate">{item.name || "—"}</p>
-                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                        <span className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">SKU Seller</span>
-                        <span className="font-mono text-sm font-semibold text-orange-700 bg-orange-50 px-2 py-0.5 rounded">{item.sku || "—"}</span>
+                      <p className="font-light text-xs tracking-wider truncate">{item.name || "—"}</p>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <span className="text-[10px] font-light tracking-[0.2em] text-neutral-500">SKU Seller</span>
+                        <span className="font-mono text-xs font-bold">{item.sku || "—"}</span>
                         {item.shopSku && item.shopSku !== item.sku && (
-                          <span className="font-mono text-[10px] text-slate-400">shop: {item.shopSku}</span>
+                          <span className="font-mono text-[10px] font-light text-neutral-400">shop: {item.shopSku}</span>
                         )}
                       </div>
                     </div>
 
-                    <div className="text-center">
-                      <p className="text-2xl font-bold text-slate-900">{item.quantity}</p>
-                      <p className="text-xs text-slate-400">unidades</p>
+                    <div className="flex sm:flex-col sm:text-center items-baseline gap-2">
+                      <p className="text-2xl font-bold">{item.quantity}</p>
+                      <p className="text-[10px] font-light tracking-widest text-neutral-400">Unidades</p>
                     </div>
 
-                    <div className="text-right">
-                      <p className="text-sm font-semibold text-slate-800">
+                    <div className="flex sm:flex-col items-start sm:items-end gap-2">
+                      <p className="text-xs font-bold tracking-wider">
                         CLP {item.price.toLocaleString("es-CL")}
                       </p>
                       <StateChip state={item.status} />
@@ -392,7 +354,7 @@ export default function OrdersPage() {
                   </div>
                 ))}
                 {order.items.length === 0 && (
-                  <p className="px-6 py-4 text-sm text-slate-400">Sin items</p>
+                  <p className="px-6 py-4 text-xs font-light tracking-wider text-neutral-400">Sin items</p>
                 )}
               </div>
             </div>
