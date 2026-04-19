@@ -204,25 +204,29 @@ export async function getFalabellaStockForSkus(
       throw new Error(`Falabella GetStock error ${errorCode}: ${msg}`);
     }
 
-    // Shape real (confirmado): SuccessResponse.Body.Stocks.SellerWarehouses[]
+    // Shapes confirmadas: SuccessResponse.Body.Stocks.{ SellerWarehouses, FulfillmentWarehouses }
     // Cada entry: { Sku, Quantity (string), FacilityID, SellerWarehouseId }
-    const raw =
-      data?.SuccessResponse?.Body?.Stocks?.SellerWarehouses ??
-      data?.Body?.Stocks?.SellerWarehouses;
+    // FBF (Fulfillment By Falabella) puede venir solo en FulfillmentWarehouses.
+    const stocksRoot = data?.SuccessResponse?.Body?.Stocks ?? data?.Body?.Stocks;
+    const sellerWh = stocksRoot?.SellerWarehouses;
+    const fulfillmentWh = stocksRoot?.FulfillmentWarehouses;
+    const allRaws = [sellerWh, fulfillmentWh].filter((r) => r != null);
 
-    if (raw == null && i === 0) {
+    if (allRaws.length === 0 && i === 0) {
       console.warn("[Falabella GetStock] shape inesperada:", JSON.stringify(data).slice(0, 500));
     }
-    const items: Record<string, unknown>[] = Array.isArray(raw)
-      ? raw : raw && typeof raw === "object" ? [raw as Record<string, unknown>] : [];
 
-    for (const item of items) {
-      const sku = String(item.Sku || item.SellerSku || item.ShopSku || "");
-      if (!sku) continue;
-      const qty = parseInt(String(item.Quantity ?? item.SellableStock ?? item.Available ?? "0"), 10) || 0;
-      const prev = agg.get(sku);
-      if (prev) prev.quantity += qty;
-      else agg.set(sku, { name: String(item.Name || ""), quantity: qty });
+    for (const raw of allRaws) {
+      const items: Record<string, unknown>[] = Array.isArray(raw)
+        ? raw : raw && typeof raw === "object" ? [raw as Record<string, unknown>] : [];
+      for (const item of items) {
+        const sku = String(item.Sku || item.SellerSku || item.ShopSku || "");
+        if (!sku) continue;
+        const qty = parseInt(String(item.Quantity ?? item.SellableStock ?? item.Available ?? "0"), 10) || 0;
+        const prev = agg.get(sku);
+        if (prev) prev.quantity += qty;
+        else agg.set(sku, { name: String(item.Name || ""), quantity: qty });
+      }
     }
   }
 
@@ -377,12 +381,13 @@ export async function batchUpdateFalabellaStock(
   userId: string,
   items: { sku: string; quantity: number }[],
   country = "CL"
-): Promise<{ success: string[]; failed: string[] }> {
-  if (items.length === 0) return { success: [], failed: [] };
+): Promise<{ success: string[]; failed: string[]; errorMessages: string[] }> {
+  if (items.length === 0) return { success: [], failed: [], errorMessages: [] };
   const baseUrl = BASE_URLS[country] || BASE_URLS.CL;
   const client = getClient(userId);
   const success: string[] = [];
   const failed: string[] = [];
+  const errorMessages: string[] = [];
   const BATCH = 500;
 
   for (let i = 0; i < items.length; i += BATCH) {
@@ -398,16 +403,23 @@ export async function batchUpdateFalabellaStock(
       });
       const errorCode = data?.Head?.ErrorCode ?? data?.ErrorResponse?.Head?.ErrorCode;
       if (errorCode) {
+        const errMsg = data?.Head?.ErrorMessage ?? data?.ErrorResponse?.Head?.ErrorMessage ?? JSON.stringify(data).slice(0, 300);
+        console.warn(`[Falabella UpdateStock] batch ${i}-${i + chunk.length} error ${errorCode}:`, errMsg);
+        errorMessages.push(`batch ${i}: ${errorCode} ${errMsg}`);
         failed.push(...chunk.map((it) => it.sku));
       } else {
         success.push(...chunk.map((it) => it.sku));
       }
-    } catch {
+    } catch (e) {
+      const err = e as { response?: { data?: unknown }; message: string };
+      const detail = err.response?.data ? JSON.stringify(err.response.data).slice(0, 300) : err.message;
+      console.warn(`[Falabella UpdateStock] batch ${i}-${i + chunk.length} throw:`, detail);
+      errorMessages.push(`batch ${i}: ${detail}`);
       failed.push(...chunk.map((it) => it.sku));
     }
   }
 
-  return { success, failed };
+  return { success, failed, errorMessages };
 }
 
 // ─── Orders ──────────────────────────────────────────────────────────────────

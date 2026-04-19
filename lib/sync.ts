@@ -254,11 +254,12 @@ export async function runFullSync(
           falabellaCreds.country || "CL"
         );
         const st = result.failed.length === 0 ? "success" : "partial";
-        const msg = `${result.success.length} ok, ${result.failed.length} fallaron${failedSummary(result.failed)}`;
+        const errSuffix = result.errorMessages.length > 0 ? ` — ${result.errorMessages[0]}` : "";
+        const msg = `${result.success.length} ok, ${result.failed.length} fallaron${failedSummary(result.failed)}${errSuffix}`;
         await logSync("full_sync", "falabella", st, msg,
-          result.failed.length > 0 ? { failed: result.failed } : undefined);
+          result.failed.length > 0 ? { failed: result.failed, errorMessages: result.errorMessages } : undefined);
         onProgress?.({ stage: "falabella", message: `Falabella: ${msg}`, percent: 65, status: result.failed.length === 0 ? "ok" : "partial" });
-        if (result.failed.length > 0) errors.push(`Falabella: ${result.failed.length} fallaron`);
+        if (result.failed.length > 0) errors.push(`Falabella: ${result.failed.length} fallaron${errSuffix}`);
 
         // Actualizar falabellaStock local con los valores empujados (bsaleStock)
         for (const sku of result.success) {
