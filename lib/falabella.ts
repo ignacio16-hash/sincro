@@ -124,6 +124,7 @@ export async function getFalabellaStockForSkus(
   for (let i = 0; i < skus.length; i += BATCH) {
     const chunk = skus.slice(i, i + BATCH);
     const extra: Record<string, string> = {
+      FacilityId: "GSC-001",
       SellerSku: JSON.stringify(chunk),
       Limit: String(chunk.length),
     };
