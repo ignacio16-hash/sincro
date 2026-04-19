@@ -6,8 +6,8 @@ import {
   resolveSkuToVariantId,
 } from "./bsale";
 import { batchUpdateParisStock } from "./paris";
-import { batchUpdateFalabellaStock, getFalabellaOrders } from "./falabella";
-import { batchUpdateRipleyStock, getPendingRipleyOrders } from "./ripley";
+import { batchUpdateFalabellaStock, getFalabellaOrders, getFalabellaStockForSkus } from "./falabella";
+import { batchUpdateRipleyStock, getPendingRipleyOrders, getAllRipleySkus } from "./ripley";
 
 export type Platform = "paris" | "falabella" | "ripley";
 
@@ -132,8 +132,27 @@ export async function runFullSync(
       const msg = `${result.success.length} ok, ${result.failed.length} fallaron${failedSummary(result.failed)}`;
       await logSync("full_sync", "falabella", st, msg,
         result.failed.length > 0 ? { failed: result.failed } : undefined);
-      onProgress?.({ stage: "falabella", message: `Falabella: ${msg}`, percent: 70, status: result.failed.length === 0 ? "ok" : "partial" });
+      onProgress?.({ stage: "falabella", message: `Falabella: ${msg}`, percent: 65, status: result.failed.length === 0 ? "ok" : "partial" });
       if (result.failed.length > 0) errors.push(`Falabella: ${result.failed.length} fallaron`);
+
+      // Read-back: persist stock actual de Falabella para mostrar en la UI
+      try {
+        const falabellaStocks = await getFalabellaStockForSkus(
+          falabellaCreds.apiKey,
+          falabellaCreds.userId,
+          skus.map((s) => s.sku),
+          falabellaCreds.country || "CL"
+        );
+        for (const fs of falabellaStocks) {
+          await prisma.stockItem.updateMany({
+            where: { sku: fs.sku },
+            data: { falabellaStock: fs.quantity },
+          });
+        }
+        onProgress?.({ stage: "falabella", message: `Falabella stock leído: ${falabellaStocks.length} SKUs`, percent: 70, status: "ok" });
+      } catch (e) {
+        console.warn("[Sync] Falabella read-back falló:", (e as Error).message);
+      }
     } catch (e) {
       const msg = `Falabella: ${(e as Error).message}`;
       errors.push(msg);
@@ -158,8 +177,22 @@ export async function runFullSync(
       const msg = `${result.success.length} ok, ${result.failed.length} fallaron${failedSummary(result.failed)}`;
       await logSync("full_sync", "ripley", st, msg,
         result.failed.length > 0 ? { failed: result.failed } : undefined);
-      onProgress?.({ stage: "ripley", message: `Ripley: ${msg}`, percent: 92, status: result.failed.length === 0 ? "ok" : "partial" });
+      onProgress?.({ stage: "ripley", message: `Ripley: ${msg}`, percent: 87, status: result.failed.length === 0 ? "ok" : "partial" });
       if (result.failed.length > 0) errors.push(`Ripley: ${result.failed.length} fallaron`);
+
+      // Read-back: persist stock actual de Ripley (offers OF21)
+      try {
+        const ripleyStocks = await getAllRipleySkus(ripleyCreds.apiKey, ripleyCreds.instanceUrl);
+        for (const rs of ripleyStocks) {
+          await prisma.stockItem.updateMany({
+            where: { sku: rs.sku },
+            data: { ripleyStock: rs.quantity },
+          });
+        }
+        onProgress?.({ stage: "ripley", message: `Ripley stock leído: ${ripleyStocks.length} offers`, percent: 92, status: "ok" });
+      } catch (e) {
+        console.warn("[Sync] Ripley read-back falló:", (e as Error).message);
+      }
     } catch (e) {
       const msg = `Ripley: ${(e as Error).message}`;
       errors.push(msg);
