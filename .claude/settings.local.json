@@ -25,7 +25,16 @@
       "WebFetch(domain:api.sm-co-prod.aws.cencosud.com)",
       "WebFetch(domain:www.versori.com)",
       "WebFetch(domain:sellerapi.sellercenter.jumia.com)",
-      "WebFetch(domain:lazada-sellercenter.readme.io)"
+      "WebFetch(domain:lazada-sellercenter.readme.io)",
+      "WebFetch(domain:medium.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(npx tsc *)",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "WebFetch(domain:marketplace.zendesk.com)",
+      "WebFetch(domain:documenter.getpostman.com)",
+      "WebFetch(domain:sellercenter.ripleylabs.com)",
+      "WebFetch(domain:ripley.zendesk.com)",
+      "Bash(python3 -c ' *)"
     ]
   }
 }
