@@ -32,43 +32,38 @@ function failedSummary(failed: string[]): string {
   return ` — fallaron: ${preview}${extra}`;
 }
 
-export async function runFullSync(
+// ─── Catalog refresh (9 AM y 6 PM Santiago) ──────────────────────────────────
+// Refresca los SKUs de Bsale + matching con marketplaces. Esta función hace las
+// llamadas costosas; el sync de cada 15 min solo empuja el stock cacheado en DB.
+export async function refreshBsaleCatalog(
   onProgress?: (event: SyncProgressEvent) => void
-): Promise<{
-  status: string;
-  synced: number;
-  errors: string[];
-  duration: number;
-}> {
-  const start = Date.now();
+): Promise<{ status: string; bsaleCount: number; matched: { falabella: number; ripley: number; paris: number }; errors: string[] }> {
   const errors: string[] = [];
-  let synced = 0;
-
-  onProgress?.({ stage: "init", message: "Iniciando sincronización...", percent: 0 });
+  const matched = { falabella: 0, ripley: 0, paris: 0 };
 
   const bsaleCreds = await getCredentials("bsale");
   if (!bsaleCreds?.accessToken) {
-    await logSync("full_sync", "all", "error", "Bsale no configurado");
     onProgress?.({ stage: "bsale", message: "Bsale no configurado", percent: 100, status: "error" });
-    return { status: "error", synced: 0, errors: ["Bsale no configurado"], duration: 0 };
+    return { status: "error", bsaleCount: 0, matched, errors: ["Bsale no configurado"] };
   }
 
-  let skus: { sku: string; variantId: number; name: string; stock: number }[] = [];
+  // 1. Fetch Bsale SKUs + stocks
+  onProgress?.({ stage: "bsale", message: "Cargando catálogo Bsale...", percent: 5 });
+  let bsaleSkus: { sku: string; variantId: number; name: string; stock: number }[] = [];
   try {
-    onProgress?.({ stage: "bsale", message: "Cargando SKUs de Bsale...", percent: 5 });
     const officeId = bsaleCreds.officeId ? parseInt(bsaleCreds.officeId) : undefined;
-    skus = await getAllBsaleSkus(bsaleCreds.accessToken, officeId);
-    onProgress?.({ stage: "bsale", message: `${skus.length} SKUs cargados de Bsale`, percent: 20, status: "ok" });
+    bsaleSkus = await getAllBsaleSkus(bsaleCreds.accessToken, officeId);
+    onProgress?.({ stage: "bsale", message: `${bsaleSkus.length} SKUs de Bsale`, percent: 25, status: "ok" });
   } catch (e) {
-    const msg = `Error obteniendo SKUs de Bsale: ${(e as Error).message}`;
+    const msg = `Bsale: ${(e as Error).message}`;
     errors.push(msg);
-    await logSync("full_sync", "bsale", "error", msg);
+    await logSync("catalog_refresh", "bsale", "error", msg);
     onProgress?.({ stage: "bsale", message: msg, percent: 100, status: "error" });
-    return { status: "error", synced: 0, errors, duration: Date.now() - start };
+    return { status: "error", bsaleCount: 0, matched, errors };
   }
 
-  // Persist stock items in DB
-  for (const item of skus) {
+  // 2. Upsert en StockItem (base de verdad)
+  for (const item of bsaleSkus) {
     await prisma.stockItem.upsert({
       where: { sku: item.sku },
       update: {
@@ -87,8 +82,120 @@ export async function runFullSync(
     });
   }
 
-  const stockItems = skus.map((s) => ({ sku: s.sku, quantity: s.stock }));
-  synced = stockItems.length;
+  const bsaleSkuSet = new Set(bsaleSkus.map((s) => s.sku));
+
+  // 3. Match Falabella (GetStock batch de 5)
+  const falabellaCreds = await getCredentials("falabella");
+  if (falabellaCreds?.apiKey && falabellaCreds?.userId) {
+    onProgress?.({ stage: "match_falabella", message: "Matching Falabella...", percent: 40 });
+    try {
+      const fStocks = await getFalabellaStockForSkus(
+        falabellaCreds.apiKey,
+        falabellaCreds.userId,
+        [...bsaleSkuSet],
+        falabellaCreds.country || "CL"
+      );
+      const matchedSkus = new Set(fStocks.map((s) => s.sku));
+      for (const fs of fStocks) {
+        await prisma.stockItem.updateMany({ where: { sku: fs.sku }, data: { falabellaStock: fs.quantity } });
+      }
+      // SKUs de Bsale que NO están en Falabella: falabellaStock = null
+      for (const sku of bsaleSkuSet) {
+        if (!matchedSkus.has(sku)) {
+          await prisma.stockItem.updateMany({ where: { sku }, data: { falabellaStock: null } });
+        }
+      }
+      matched.falabella = matchedSkus.size;
+      onProgress?.({ stage: "match_falabella", message: `Falabella: ${matched.falabella} SKUs coinciden`, percent: 55, status: "ok" });
+    } catch (e) {
+      const msg = `Match Falabella: ${(e as Error).message}`;
+      errors.push(msg);
+      onProgress?.({ stage: "match_falabella", message: msg, percent: 55, status: "error" });
+    }
+  }
+
+  // 4. Match Ripley (OF21)
+  const ripleyCreds = await getCredentials("ripley");
+  if (ripleyCreds?.apiKey && ripleyCreds?.instanceUrl) {
+    onProgress?.({ stage: "match_ripley", message: "Matching Ripley...", percent: 65 });
+    try {
+      const rOffers = await getAllRipleySkus(ripleyCreds.apiKey, ripleyCreds.instanceUrl);
+      const matchedSkus = new Set<string>();
+      for (const ro of rOffers) {
+        if (bsaleSkuSet.has(ro.sku)) {
+          await prisma.stockItem.updateMany({ where: { sku: ro.sku }, data: { ripleyStock: ro.quantity } });
+          matchedSkus.add(ro.sku);
+        }
+      }
+      for (const sku of bsaleSkuSet) {
+        if (!matchedSkus.has(sku)) {
+          await prisma.stockItem.updateMany({ where: { sku }, data: { ripleyStock: null } });
+        }
+      }
+      matched.ripley = matchedSkus.size;
+      onProgress?.({ stage: "match_ripley", message: `Ripley: ${matched.ripley} SKUs coinciden`, percent: 80, status: "ok" });
+    } catch (e) {
+      const msg = `Match Ripley: ${(e as Error).message}`;
+      errors.push(msg);
+      onProgress?.({ stage: "match_ripley", message: msg, percent: 80, status: "error" });
+    }
+  }
+
+  // 5. Paris: sin endpoint de listado bulk. Por ahora marcamos todos los Bsale
+  // SKUs como parisStock=0 si no hay previo, para que el sync los incluya.
+  // Un futuro read-back per-SKU podría ajustar esto.
+  onProgress?.({ stage: "match_paris", message: "Paris: sin endpoint bulk, se pushea todo", percent: 90, status: "skipped" });
+
+  const duration = Date.now();
+  await logSync("catalog_refresh", "all", errors.length === 0 ? "success" : "partial",
+    `Catálogo refrescado: Bsale=${bsaleSkus.length}, Falabella=${matched.falabella}, Ripley=${matched.ripley}`,
+    { bsaleCount: bsaleSkus.length, matched, errors }, duration);
+
+  onProgress?.({
+    stage: "done",
+    message: `Catálogo: ${bsaleSkus.length} Bsale · ${matched.falabella} Falabella · ${matched.ripley} Ripley`,
+    percent: 100,
+    status: errors.length === 0 ? "ok" : "partial",
+  });
+
+  return { status: errors.length === 0 ? "success" : "partial", bsaleCount: bsaleSkus.length, matched, errors };
+}
+
+// ─── Stock sync (cada 15 min y manual) ───────────────────────────────────────
+// Lee StockItem desde DB (NO llama Bsale). Para cada marketplace filtra los
+// SKUs que coinciden (stock != null en la columna correspondiente) y les
+// empuja el bsaleStock guardado.
+export async function runFullSync(
+  onProgress?: (event: SyncProgressEvent) => void
+): Promise<{
+  status: string;
+  synced: number;
+  errors: string[];
+  duration: number;
+}> {
+  const start = Date.now();
+  const errors: string[] = [];
+  let synced = 0;
+
+  onProgress?.({ stage: "init", message: "Iniciando sincronización...", percent: 0 });
+
+  // Leer catálogo guardado (alimentado por refreshBsaleCatalog a las 9 y 18hrs)
+  const cached = await prisma.stockItem.findMany({
+    select: { sku: true, bsaleStock: true, falabellaStock: true, ripleyStock: true },
+  });
+
+  if (cached.length === 0) {
+    const msg = "No hay catálogo guardado. Espera el refresh a las 9 AM o 6 PM, o corre /api/catalog-refresh manualmente.";
+    errors.push(msg);
+    onProgress?.({ stage: "bsale", message: msg, percent: 100, status: "error" });
+    await logSync("full_sync", "all", "error", msg);
+    return { status: "error", synced: 0, errors, duration: Date.now() - start };
+  }
+  onProgress?.({ stage: "bsale", message: `${cached.length} SKUs en catálogo (cached)`, percent: 15, status: "ok" });
+  synced = cached.length;
+
+  // Items para Paris (sin matching — pushea todos)
+  const stockItems = cached.map((s) => ({ sku: s.sku, quantity: s.bsaleStock }));
 
   // Sync Paris
   const parisCreds = await getCredentials("paris");
@@ -117,87 +224,79 @@ export async function runFullSync(
     onProgress?.({ stage: "paris", message: "Paris: no configurado", percent: 45, status: "skipped" });
   }
 
-  // Sync Falabella
+  // Sync Falabella — solo SKUs que ya matcheamos (falabellaStock != null)
   const falabellaCreds = await getCredentials("falabella");
   if (falabellaCreds?.apiKey && falabellaCreds?.userId) {
-    onProgress?.({ stage: "falabella", message: "Sincronizando Falabella...", percent: 50 });
-    try {
-      const result = await batchUpdateFalabellaStock(
-        falabellaCreds.apiKey,
-        falabellaCreds.userId,
-        stockItems,
-        falabellaCreds.country || "CL"
-      );
-      const st = result.failed.length === 0 ? "success" : "partial";
-      const msg = `${result.success.length} ok, ${result.failed.length} fallaron${failedSummary(result.failed)}`;
-      await logSync("full_sync", "falabella", st, msg,
-        result.failed.length > 0 ? { failed: result.failed } : undefined);
-      onProgress?.({ stage: "falabella", message: `Falabella: ${msg}`, percent: 65, status: result.failed.length === 0 ? "ok" : "partial" });
-      if (result.failed.length > 0) errors.push(`Falabella: ${result.failed.length} fallaron`);
-
-      // Read-back: persist stock actual de Falabella para mostrar en la UI
+    const falabellaItems = cached
+      .filter((s) => s.falabellaStock !== null)
+      .map((s) => ({ sku: s.sku, quantity: s.bsaleStock }));
+    if (falabellaItems.length === 0) {
+      onProgress?.({ stage: "falabella", message: "Falabella: sin SKUs matcheados (corre refresh catálogo)", percent: 70, status: "skipped" });
+    } else {
+      onProgress?.({ stage: "falabella", message: `Sincronizando Falabella (${falabellaItems.length} SKUs)...`, percent: 50 });
       try {
-        const falabellaStocks = await getFalabellaStockForSkus(
+        const result = await batchUpdateFalabellaStock(
           falabellaCreds.apiKey,
           falabellaCreds.userId,
-          skus.map((s) => s.sku),
+          falabellaItems,
           falabellaCreds.country || "CL"
         );
-        for (const fs of falabellaStocks) {
-          await prisma.stockItem.updateMany({
-            where: { sku: fs.sku },
-            data: { falabellaStock: fs.quantity },
-          });
+        const st = result.failed.length === 0 ? "success" : "partial";
+        const msg = `${result.success.length} ok, ${result.failed.length} fallaron${failedSummary(result.failed)}`;
+        await logSync("full_sync", "falabella", st, msg,
+          result.failed.length > 0 ? { failed: result.failed } : undefined);
+        onProgress?.({ stage: "falabella", message: `Falabella: ${msg}`, percent: 65, status: result.failed.length === 0 ? "ok" : "partial" });
+        if (result.failed.length > 0) errors.push(`Falabella: ${result.failed.length} fallaron`);
+
+        // Actualizar falabellaStock local con los valores empujados (bsaleStock)
+        for (const sku of result.success) {
+          const bsaleQty = cached.find((c) => c.sku === sku)?.bsaleStock ?? 0;
+          await prisma.stockItem.updateMany({ where: { sku }, data: { falabellaStock: bsaleQty } });
         }
-        onProgress?.({ stage: "falabella", message: `Falabella stock leído: ${falabellaStocks.length} SKUs`, percent: 70, status: "ok" });
       } catch (e) {
-        console.warn("[Sync] Falabella read-back falló:", (e as Error).message);
+        const msg = `Falabella: ${(e as Error).message}`;
+        errors.push(msg);
+        await logSync("full_sync", "falabella", "error", msg);
+        onProgress?.({ stage: "falabella", message: msg, percent: 70, status: "error" });
       }
-    } catch (e) {
-      const msg = `Falabella: ${(e as Error).message}`;
-      errors.push(msg);
-      await logSync("full_sync", "falabella", "error", msg);
-      onProgress?.({ stage: "falabella", message: msg, percent: 70, status: "error" });
     }
   } else {
     onProgress?.({ stage: "falabella", message: "Falabella: no configurado", percent: 70, status: "skipped" });
   }
 
-  // Sync Ripley
+  // Sync Ripley — solo SKUs matcheados (ripleyStock != null)
   const ripleyCreds = await getCredentials("ripley");
   if (ripleyCreds?.apiKey && ripleyCreds?.instanceUrl) {
-    onProgress?.({ stage: "ripley", message: "Sincronizando Ripley...", percent: 75 });
-    try {
-      const result = await batchUpdateRipleyStock(
-        ripleyCreds.apiKey,
-        ripleyCreds.instanceUrl,
-        stockItems
-      );
-      const st = result.failed.length === 0 ? "success" : "partial";
-      const msg = `${result.success.length} ok, ${result.failed.length} fallaron${failedSummary(result.failed)}`;
-      await logSync("full_sync", "ripley", st, msg,
-        result.failed.length > 0 ? { failed: result.failed } : undefined);
-      onProgress?.({ stage: "ripley", message: `Ripley: ${msg}`, percent: 87, status: result.failed.length === 0 ? "ok" : "partial" });
-      if (result.failed.length > 0) errors.push(`Ripley: ${result.failed.length} fallaron`);
-
-      // Read-back: persist stock actual de Ripley (offers OF21)
+    const ripleyItems = cached
+      .filter((s) => s.ripleyStock !== null)
+      .map((s) => ({ sku: s.sku, quantity: s.bsaleStock }));
+    if (ripleyItems.length === 0) {
+      onProgress?.({ stage: "ripley", message: "Ripley: sin SKUs matcheados (corre refresh catálogo)", percent: 92, status: "skipped" });
+    } else {
+      onProgress?.({ stage: "ripley", message: `Sincronizando Ripley (${ripleyItems.length} SKUs)...`, percent: 75 });
       try {
-        const ripleyStocks = await getAllRipleySkus(ripleyCreds.apiKey, ripleyCreds.instanceUrl);
-        for (const rs of ripleyStocks) {
-          await prisma.stockItem.updateMany({
-            where: { sku: rs.sku },
-            data: { ripleyStock: rs.quantity },
-          });
+        const result = await batchUpdateRipleyStock(
+          ripleyCreds.apiKey,
+          ripleyCreds.instanceUrl,
+          ripleyItems
+        );
+        const st = result.failed.length === 0 ? "success" : "partial";
+        const msg = `${result.success.length} ok, ${result.failed.length} fallaron${failedSummary(result.failed)}`;
+        await logSync("full_sync", "ripley", st, msg,
+          result.failed.length > 0 ? { failed: result.failed } : undefined);
+        onProgress?.({ stage: "ripley", message: `Ripley: ${msg}`, percent: 87, status: result.failed.length === 0 ? "ok" : "partial" });
+        if (result.failed.length > 0) errors.push(`Ripley: ${result.failed.length} fallaron`);
+
+        for (const sku of result.success) {
+          const bsaleQty = cached.find((c) => c.sku === sku)?.bsaleStock ?? 0;
+          await prisma.stockItem.updateMany({ where: { sku }, data: { ripleyStock: bsaleQty } });
         }
-        onProgress?.({ stage: "ripley", message: `Ripley stock leído: ${ripleyStocks.length} offers`, percent: 92, status: "ok" });
       } catch (e) {
-        console.warn("[Sync] Ripley read-back falló:", (e as Error).message);
+        const msg = `Ripley: ${(e as Error).message}`;
+        errors.push(msg);
+        await logSync("full_sync", "ripley", "error", msg);
+        onProgress?.({ stage: "ripley", message: msg, percent: 92, status: "error" });
       }
-    } catch (e) {
-      const msg = `Ripley: ${(e as Error).message}`;
-      errors.push(msg);
-      await logSync("full_sync", "ripley", "error", msg);
-      onProgress?.({ stage: "ripley", message: msg, percent: 92, status: "error" });
     }
   } else {
     onProgress?.({ stage: "ripley", message: "Ripley: no configurado", percent: 92, status: "skipped" });

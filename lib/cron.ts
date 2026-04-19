@@ -1,12 +1,40 @@
 import cron, { ScheduledTask } from "node-cron";
-import { runFullSync, pollAndProcessOrders } from "./sync";
+import { runFullSync, pollAndProcessOrders, refreshBsaleCatalog } from "./sync";
 
 let isSyncRunning = false;
+let isCatalogRefreshing = false;
 let syncJob: ScheduledTask | null = null;
 let ordersJob: ScheduledTask | null = null;
+let catalogJob: ScheduledTask | null = null;
 
 export function startCronSync() {
-  if (syncJob && ordersJob) return;
+  if (syncJob && ordersJob && catalogJob) return;
+
+  // Catalog refresh: 9 AM y 6 PM hora Chile continental (America/Santiago)
+  // Recalcula Bsale SKUs + matching Falabella/Ripley. Base de verdad para el sync.
+  if (!catalogJob) {
+    catalogJob = cron.schedule(
+      "0 9,18 * * *",
+      async () => {
+        if (isCatalogRefreshing) {
+          console.log("[Cron] Catalog refresh already running, skipping");
+          return;
+        }
+        isCatalogRefreshing = true;
+        console.log("[Cron] Starting Bsale catalog refresh...");
+        try {
+          const result = await refreshBsaleCatalog();
+          console.log(`[Cron] Catalog refreshed: ${result.status} — ${result.bsaleCount} Bsale, ${result.matched.falabella} Falabella, ${result.matched.ripley} Ripley`);
+        } catch (err) {
+          console.error("[Cron] Catalog refresh error:", err);
+        } finally {
+          isCatalogRefreshing = false;
+        }
+      },
+      { timezone: "America/Santiago" }
+    );
+    console.log("[Cron] Bsale catalog refresh scheduled (9 AM y 6 PM Santiago)");
+  }
 
   // Full stock sync every 15 minutes
   if (!syncJob) {
@@ -48,4 +76,6 @@ export function stopCronSync() {
   syncJob = null;
   ordersJob?.stop();
   ordersJob = null;
+  catalogJob?.stop();
+  catalogJob = null;
 }
