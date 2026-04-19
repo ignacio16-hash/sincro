@@ -293,10 +293,12 @@ export async function batchUpdateFalabellaStock(
 export interface FalabellaOrderItem {
   orderItemId: string;
   sku: string;
+  shopSku: string;
   name: string;
   quantity: number;
   price: number;
   status: string;
+  imageUrl: string | null;
 }
 
 export interface FalabellaOrder {
@@ -384,14 +386,25 @@ export async function getFalabellaOrderItems(
   const items: Record<string, unknown>[] = Array.isArray(raw)
     ? raw : typeof raw === "object" ? [raw as Record<string, unknown>] : [];
 
-  return items.map((item) => ({
-    orderItemId: String(item.OrderItemId || ""),
-    sku: String(item.SellerSku || item.ShopSku || ""),
-    name: String(item.Name || item.ProductName || ""),
-    quantity: parseInt(String(item.Quantity || "1"), 10),
-    price: parseFloat(String(item.PaidPrice || item.UnitPrice || "0")) || 0,
-    status: String(item.Status || ""),
-  }));
+  return items.map((item) => {
+    const sellerSku = String(item.SellerSku || item.Sku || "");
+    const shopSku = String(item.ShopSku || "");
+    // Falabella CDN pattern — reusable for many products. Si no existe, el <img>
+    // tiene onError que oculta la imagen.
+    const imageUrl = sellerSku
+      ? `https://falabella.scene7.com/is/image/FalabellaCL/${encodeURIComponent(sellerSku)}?wid=200&hei=200`
+      : null;
+    return {
+      orderItemId: String(item.OrderItemId || ""),
+      sku: sellerSku || shopSku,
+      shopSku,
+      name: String(item.Name || item.ProductName || ""),
+      quantity: parseInt(String(item.Quantity || "1"), 10),
+      price: parseFloat(String(item.PaidPrice || item.UnitPrice || "0")) || 0,
+      status: String(item.Status || ""),
+      imageUrl,
+    };
+  });
 }
 
 // GetDocument (DocumentType=shippingLabel) → base64-encoded PDF

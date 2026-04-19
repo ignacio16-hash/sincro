@@ -175,19 +175,56 @@ export async function getRipleyOrders(
       new Date(String(a.created_date || "")).getTime()
   );
 
-  return orders.slice(0, take).map((o) => {
+  const taken = orders.slice(0, take);
+
+  // Reunir todos los SKUs sin imagen en las líneas para batch lookup en /api/offers
+  const skusSinImagen = new Set<string>();
+  for (const o of taken) {
+    for (const line of (o.order_lines as Record<string, unknown>[]) || []) {
+      const medias = (line.product_medias as Record<string, string>[]) || [];
+      if (medias.length === 0) {
+        const sku = String(line.offer_sku || "");
+        if (sku) skusSinImagen.add(sku);
+      }
+    }
+  }
+
+  // Lookup en lotes: /api/offers?shop_skus=X,Y,Z retorna product_medias por offer
+  const imageMap = new Map<string, string>();
+  if (skusSinImagen.size > 0) {
+    try {
+      const skusArray = [...skusSinImagen];
+      for (let i = 0; i < skusArray.length; i += 50) {
+        const chunk = skusArray.slice(i, i + 50);
+        const { data: offersData } = await client.get("/api/offers", {
+          params: { shop_skus: chunk.join(","), max: chunk.length },
+        });
+        for (const offer of offersData?.offers || []) {
+          const sku = String(offer.shop_sku || "");
+          const medias: Record<string, string>[] = offer.product_medias || [];
+          const img = medias.find((m) => m.type === "small") || medias[0];
+          if (sku && img?.media_url) imageMap.set(sku, img.media_url);
+        }
+      }
+    } catch (e) {
+      console.warn("[Ripley] No se pudieron obtener imágenes via /api/offers:", (e as Error).message);
+    }
+  }
+
+  return taken.map((o) => {
     const lines: RipleyOrderLine[] = ((o.order_lines as Record<string, unknown>[]) || []).map((line) => {
       const medias: Record<string, string>[] = (line.product_medias as Record<string, string>[]) || [];
-      // Prefer "small" type image, fallback to first
       const img = medias.find((m) => m.type === "small") || medias[0];
+      const offerSku = String(line.offer_sku || "");
+      const imageUrl = img?.media_url ?? imageMap.get(offerSku) ?? null;
       return {
         orderLineId: String(line.order_line_id || ""),
-        offerSku: String(line.offer_sku || ""),
+        offerSku,
         productTitle: String(line.product_title || ""),
         quantity: Number(line.quantity) || 0,
         price: Number(line.price) || 0,
         orderLineState: String(line.order_line_state || ""),
-        imageUrl: img?.media_url ?? null,
+        imageUrl,
       };
     });
     return {

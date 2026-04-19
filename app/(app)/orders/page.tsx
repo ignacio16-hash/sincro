@@ -7,10 +7,12 @@ import { useCallback, useEffect, useState } from "react";
 interface FalabellaItem {
   orderItemId: string;
   sku: string;
+  shopSku: string;
   name: string;
   quantity: number;
   price: number;
   status: string;
+  imageUrl: string | null;
 }
 
 interface FalabellaOrder {
@@ -341,9 +343,25 @@ export default function OrdersPage() {
               <div className="divide-y divide-slate-50">
                 {order.items.map((item) => (
                   <div key={item.orderItemId} className="flex items-center gap-4 px-6 py-4">
-                    {/* Placeholder image (Falabella GetOrderItems doesn't return images in v500) */}
-                    <div className="w-16 h-16 rounded-lg bg-slate-100 flex-shrink-0 flex items-center justify-center">
-                      <svg className="w-6 h-6 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    {/* Product image (Falabella CDN best-effort, hidden on error) */}
+                    <div className="w-16 h-16 rounded-lg bg-slate-100 flex-shrink-0 overflow-hidden flex items-center justify-center">
+                      {item.imageUrl ? (
+                        <img
+                          src={item.imageUrl}
+                          alt={item.name}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            const img = e.target as HTMLImageElement;
+                            img.style.display = "none";
+                            (img.parentElement?.querySelector("svg") as SVGElement | null)?.style.setProperty("display", "block");
+                          }}
+                        />
+                      ) : null}
+                      <svg
+                        className="w-6 h-6 text-slate-300"
+                        style={{ display: item.imageUrl ? "none" : "block" }}
+                        fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                      >
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
                           d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                       </svg>
@@ -351,9 +369,12 @@ export default function OrdersPage() {
 
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-slate-900 text-sm truncate">{item.name || "—"}</p>
-                      <div className="mt-1 inline-flex items-center gap-1.5">
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
                         <span className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">SKU Seller</span>
                         <span className="font-mono text-sm font-semibold text-orange-700 bg-orange-50 px-2 py-0.5 rounded">{item.sku || "—"}</span>
+                        {item.shopSku && item.shopSku !== item.sku && (
+                          <span className="font-mono text-[10px] text-slate-400">shop: {item.shopSku}</span>
+                        )}
                       </div>
                     </div>
 
