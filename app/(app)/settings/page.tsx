@@ -10,6 +10,8 @@ interface PlatformConfig {
 }
 
 interface Office { id: number; name: string }
+interface AppUser { id: string; username: string; role: "admin" | "vendedor"; createdAt: string }
+interface Me { username: string; role: "admin" | "vendedor" }
 
 const platforms: PlatformConfig[] = [
   {
@@ -53,7 +55,7 @@ const platforms: PlatformConfig[] = [
   {
     platform: "ripley_svc",
     label: "Ripley SVC (SellerCenter)",
-    description: "Ripley SVC — operación logística: etiquetas, manifiestos, agendamiento de despachos. Usa tu usuario/contraseña de https://sellercenter.ripleylabs.com",
+    description: "Ripley SVC — operación logística: etiquetas, manifiestos, agendamiento de despachos.",
     fields: [
       { key: "username", label: "Usuario (Seller)", placeholder: "tu-usuario-svc" },
       { key: "password", label: "Contraseña", placeholder: "••••••••", type: "password" },
@@ -73,6 +75,7 @@ const webhookPaths: Record<string, string> = {
 type TestStatus = { loading: boolean; ok?: boolean; message?: string };
 
 export default function SettingsPage() {
+  const [me, setMe] = useState<Me | null>(null);
   const [formData, setFormData] = useState<Record<string, Record<string, string>>>({});
   const [activeStatus, setActiveStatus] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState<string | null>(null);
@@ -81,17 +84,32 @@ export default function SettingsPage() {
   const [offices, setOffices] = useState<Office[]>([]);
   const [loadingOffices, setLoadingOffices] = useState(false);
 
+  // Admin-only state
+  const [users, setUsers] = useState<AppUser[]>([]);
+  const [newUser, setNewUser] = useState({ username: "", pin: "", role: "vendedor" as "admin" | "vendedor" });
+  const [userError, setUserError] = useState<string | null>(null);
+  const [loginSettings, setLoginSettings] = useState({ logoText: "PARROT", imageUrl: "" });
+  const [loginSaved, setLoginSaved] = useState(false);
+
   useEffect(() => {
-    fetch("/api/settings")
-      .then((r) => r.json())
-      .then((creds: { platform: string; config: Record<string, string>; isActive: boolean }[]) => {
-        const fd: Record<string, Record<string, string>> = {};
-        const status: Record<string, boolean> = {};
-        creds.forEach((c) => { fd[c.platform] = c.config; status[c.platform] = c.isActive; });
-        setFormData(fd);
-        setActiveStatus(status);
-      });
+    fetch("/api/auth/me").then((r) => r.json()).then((d: { user: Me | null }) => setMe(d.user));
+    fetch("/api/settings").then((r) => r.json()).then((creds: { platform: string; config: Record<string, string>; isActive: boolean }[]) => {
+      const fd: Record<string, Record<string, string>> = {};
+      const status: Record<string, boolean> = {};
+      creds.forEach((c) => { fd[c.platform] = c.config; status[c.platform] = c.isActive; });
+      setFormData(fd);
+      setActiveStatus(status);
+    });
+    fetch("/api/login-settings").then((r) => r.json()).then(setLoginSettings);
   }, []);
+
+  const isAdmin = me?.role === "admin";
+
+  // Load users when admin
+  useEffect(() => {
+    if (!isAdmin) return;
+    fetch("/api/users").then((r) => r.json()).then((d: { users: AppUser[] }) => setUsers(d.users || []));
+  }, [isAdmin]);
 
   const loadOffices = useCallback(async (token: string) => {
     if (!token || token.includes("••••")) return;
@@ -155,6 +173,41 @@ export default function SettingsPage() {
     }
   }
 
+  async function createUser(e: React.FormEvent) {
+    e.preventDefault();
+    setUserError(null);
+    const res = await fetch("/api/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(newUser),
+    });
+    const json = await res.json();
+    if (!res.ok) { setUserError(json.error || "Error al crear usuario"); return; }
+    setUsers((prev) => [...prev, json.user]);
+    setNewUser({ username: "", pin: "", role: "vendedor" });
+  }
+
+  async function deleteUser(id: string) {
+    if (!confirm("¿Eliminar usuario?")) return;
+    const res = await fetch(`/api/users?id=${id}`, { method: "DELETE" });
+    if (!res.ok) { alert("Error al eliminar"); return; }
+    setUsers((prev) => prev.filter((u) => u.id !== id));
+  }
+
+  async function saveLoginSettings(e: React.FormEvent) {
+    e.preventDefault();
+    const res = await fetch("/api/login-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(loginSettings),
+    });
+    if (!res.ok) { alert("Error al guardar"); return; }
+    const json = await res.json();
+    setLoginSettings({ logoText: json.logoText, imageUrl: json.imageUrl });
+    setLoginSaved(true);
+    setTimeout(() => setLoginSaved(false), 3000);
+  }
+
   return (
     <div className="px-4 sm:px-6 lg:px-10 py-6 lg:py-10">
       <div className="mb-6 lg:mb-10 pb-6 border-b border-black">
@@ -164,128 +217,267 @@ export default function SettingsPage() {
         </p>
       </div>
 
-      <div className="space-y-6 max-w-3xl">
-        {platforms.map((p) => {
-          const test = testStatus[p.platform];
-          return (
-            <div key={p.platform} className="border border-black">
-              {/* Header */}
-              <div className="px-4 lg:px-6 py-4 border-b border-black bg-neutral-50">
-                <div className="flex flex-wrap items-center gap-3">
-                  <h2 className="text-sm lg:text-base font-bold tracking-[0.15em]">{p.label}</h2>
-                  <span
-                    data-active={activeStatus[p.platform]}
-                    className={`text-[10px] font-bold tracking-[0.2em] border border-black px-2 py-0.5 ${
-                      activeStatus[p.platform] ? "bg-black text-white" : ""
-                    }`}
-                  >
-                    {activeStatus[p.platform] ? "Conectado" : "Sin configurar"}
-                  </span>
-                </div>
-                <p className="text-[11px] font-light tracking-wider text-neutral-500 mt-2">{p.description}</p>
-              </div>
+      {/* ─── Admin-only: User management ──────────────────────────── */}
+      {isAdmin && (
+        <section className="mb-12 max-w-3xl">
+          <h2 className="text-sm font-bold tracking-[0.2em] mb-6 border-b border-black pb-3">
+            |01| Usuarios
+          </h2>
 
-              {/* Fields */}
-              <div className="px-4 lg:px-6 py-5 space-y-4">
-                {p.fields.map((field) => (
-                  <div key={field.key}>
-                    <label className="block text-[10px] font-bold tracking-[0.2em] mb-2">
-                      {field.label}
-                    </label>
-
-                    {field.isSelect ? (
-                      <div className="flex gap-2">
-                        <select
-                          value={formData[p.platform]?.[field.key] || ""}
-                          onChange={(e) => handleChange(p.platform, field.key, e.target.value)}
-                          disabled={loadingOffices || offices.length === 0}
-                          className="flex-1 px-4 py-3 text-xs tracking-widest disabled:bg-neutral-50 disabled:text-neutral-400"
-                        >
-                          <option value="">
-                            {loadingOffices
-                              ? "Cargando bodegas..."
-                              : offices.length === 0
-                              ? "Ingresa el Access Token primero"
-                              : "Todas las bodegas (recomendado)"}
-                          </option>
-                          {offices.map((o) => (
-                            <option key={o.id} value={String(o.id)}>
-                              {o.name} (ID: {o.id})
-                            </option>
-                          ))}
-                        </select>
-                        {offices.length === 0 && !loadingOffices && formData["bsale"]?.accessToken && (
-                          <button
-                            onClick={() => loadOffices(formData["bsale"]?.accessToken || "")}
-                            className="px-4 py-3 border border-black text-[10px] font-bold tracking-[0.2em] hover:bg-black hover:text-white"
-                            title="Recargar bodegas"
-                          >
-                            ↻
-                          </button>
-                        )}
-                      </div>
-                    ) : (
-                      <input
-                        type={field.type || "text"}
-                        value={formData[p.platform]?.[field.key] || ""}
-                        onChange={(e) => handleChange(p.platform, field.key, e.target.value)}
-                        placeholder={field.placeholder}
-                        className="w-full px-4 py-3 text-xs font-mono tracking-wider"
-                      />
-                    )}
-                  </div>
-                ))}
-
-                {/* Webhook info */}
-                <div className="border border-black p-4">
-                  <p className="text-[10px] font-bold tracking-[0.2em] mb-2">URL de Webhook</p>
-                  <code className="text-[11px] font-mono break-all text-neutral-700">
-                    {typeof window !== "undefined" ? window.location.origin : "https://tu-app.railway.app"}{webhookPaths[p.platform]}
-                  </code>
-                </div>
-
-                {/* Test result */}
-                {test && !test.loading && (
-                  <div
-                    className={`p-3 border text-[11px] font-light tracking-wider ${
-                      test.ok ? "border-black bg-neutral-50" : "border-black bg-black text-white"
-                    }`}
-                  >
-                    {test.ok ? "✓ " : "✗ "}{test.message}
-                  </div>
+          <div className="border border-black overflow-hidden mb-6">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-black">
+                  <th className="text-left text-[10px] font-bold tracking-[0.2em] px-4 py-3">Usuario</th>
+                  <th className="text-left text-[10px] font-bold tracking-[0.2em] px-4 py-3">Rol</th>
+                  <th className="text-right text-[10px] font-bold tracking-[0.2em] px-4 py-3"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.length === 0 && (
+                  <tr><td colSpan={3} className="px-4 py-6 text-center text-xs font-light text-neutral-400 tracking-wider">Sin usuarios</td></tr>
                 )}
+                {users.map((u) => (
+                  <tr key={u.id} className="border-b border-neutral-100">
+                    <td className="px-4 py-3 text-xs font-bold tracking-wider">{u.username}</td>
+                    <td className="px-4 py-3 text-[11px] font-light tracking-[0.2em]">
+                      {u.role === "admin" ? "Admin" : "Vendedor"}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {u.username !== me?.username && (
+                        <button
+                          onClick={() => deleteUser(u.id)}
+                          className="text-[10px] font-bold tracking-[0.2em] underline underline-offset-4 hover:no-underline"
+                        >
+                          Eliminar
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-                {/* Actions */}
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
-                  <button
-                    onClick={() => handleTest(p.platform)}
-                    disabled={test?.loading}
-                    className="px-5 py-3 text-[11px] font-bold tracking-[0.2em] border border-black hover:bg-black hover:text-white disabled:opacity-40 flex items-center justify-center gap-2"
-                  >
-                    {test?.loading && (
-                      <span className="w-3 h-3 border border-current border-t-transparent animate-spin inline-block" />
-                    )}
-                    {test?.loading ? "Verificando..." : "Verificar Conexión"}
-                  </button>
-
-                  <div className="flex items-center gap-4">
-                    {saved === p.platform && (
-                      <span className="text-[10px] font-bold tracking-[0.2em]">✓ Guardado</span>
-                    )}
-                    <button
-                      onClick={() => handleSave(p.platform)}
-                      disabled={saving === p.platform}
-                      className="bg-black text-white px-6 py-3 text-[11px] font-bold tracking-[0.2em] hover:bg-neutral-800 disabled:opacity-40"
-                    >
-                      {saving === p.platform ? "Guardando..." : "Guardar"}
-                    </button>
-                  </div>
-                </div>
+          <form onSubmit={createUser} className="border border-black p-5 space-y-4">
+            <p className="text-[10px] font-bold tracking-[0.2em] mb-2">Añadir Usuario</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-[10px] font-light tracking-[0.25em] text-neutral-500 mb-2">USUARIO</label>
+                <input
+                  type="text"
+                  value={newUser.username}
+                  onChange={(e) => setNewUser({ ...newUser, username: e.target.value.toLowerCase() })}
+                  placeholder="vendedor1"
+                  className="w-full bg-transparent border-0 border-b border-black py-2 text-xs tracking-widest focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-light tracking-[0.25em] text-neutral-500 mb-2">PIN · 4 DÍGITOS</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={4}
+                  value={newUser.pin}
+                  onChange={(e) => setNewUser({ ...newUser, pin: e.target.value.replace(/\D/g, "").slice(0, 4) })}
+                  placeholder="0000"
+                  className="w-full bg-transparent border-0 border-b border-black py-2 text-xs tracking-widest focus:outline-none font-mono"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-light tracking-[0.25em] text-neutral-500 mb-2">ROL</label>
+                <select
+                  value={newUser.role}
+                  onChange={(e) => setNewUser({ ...newUser, role: e.target.value as "admin" | "vendedor" })}
+                  className="w-full bg-transparent border-0 border-b border-black py-2 text-xs tracking-widest focus:outline-none"
+                >
+                  <option value="vendedor">Vendedor</option>
+                  <option value="admin">Admin</option>
+                </select>
               </div>
             </div>
-          );
-        })}
-      </div>
+            {userError && <p className="text-[11px] font-light tracking-wider">{userError}</p>}
+            <button
+              type="submit"
+              className="text-[11px] font-bold tracking-[0.25em] underline underline-offset-[6px] hover:no-underline"
+            >
+              Crear Usuario
+            </button>
+          </form>
+        </section>
+      )}
+
+      {/* ─── Admin-only: login customization ──────────────────────── */}
+      {isAdmin && (
+        <section className="mb-12 max-w-3xl">
+          <h2 className="text-sm font-bold tracking-[0.2em] mb-6 border-b border-black pb-3">
+            |02| Personalizar Inicio de Sesión
+          </h2>
+          <form onSubmit={saveLoginSettings} className="border border-black p-5 space-y-5">
+            <div>
+              <label className="block text-[10px] font-light tracking-[0.25em] text-neutral-500 mb-2">LOGO (TEXTO)</label>
+              <input
+                type="text"
+                value={loginSettings.logoText}
+                onChange={(e) => setLoginSettings({ ...loginSettings, logoText: e.target.value })}
+                placeholder="PARROT"
+                maxLength={40}
+                className="w-full bg-transparent border-0 border-b border-black py-2 text-xs tracking-widest focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-light tracking-[0.25em] text-neutral-500 mb-2">
+                URL IMAGEN (MODELO / FONDO)
+              </label>
+              <input
+                type="url"
+                value={loginSettings.imageUrl}
+                onChange={(e) => setLoginSettings({ ...loginSettings, imageUrl: e.target.value })}
+                placeholder="https://..."
+                className="w-full bg-transparent border-0 border-b border-black py-2 text-[11px] font-mono tracking-wider focus:outline-none"
+              />
+              {loginSettings.imageUrl && (
+                <div className="mt-3 w-full max-w-sm aspect-[3/4] bg-neutral-100 overflow-hidden">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={loginSettings.imageUrl}
+                    alt="preview"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-4 pt-2">
+              <button
+                type="submit"
+                className="text-[11px] font-bold tracking-[0.25em] underline underline-offset-[6px] hover:no-underline"
+              >
+                Guardar
+              </button>
+              {loginSaved && (
+                <span className="text-[10px] font-bold tracking-[0.2em]">✓ Guardado</span>
+              )}
+            </div>
+          </form>
+        </section>
+      )}
+
+      {/* ─── Marketplace credentials ──────────────────────────────── */}
+      <section className="max-w-3xl">
+        <h2 className="text-sm font-bold tracking-[0.2em] mb-6 border-b border-black pb-3">
+          |{isAdmin ? "03" : "01"}| Marketplaces
+        </h2>
+        <div className="space-y-6">
+          {platforms.map((p) => {
+            const test = testStatus[p.platform];
+            return (
+              <div key={p.platform} className="border border-black">
+                <div className="px-4 lg:px-6 py-4 border-b border-black bg-neutral-50">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <h3 className="text-sm lg:text-base font-bold tracking-[0.15em]">{p.label}</h3>
+                    <span
+                      data-active={activeStatus[p.platform]}
+                      className={`text-[10px] font-bold tracking-[0.2em] border border-black px-2 py-0.5 ${
+                        activeStatus[p.platform] ? "bg-black text-white" : ""
+                      }`}
+                    >
+                      {activeStatus[p.platform] ? "Conectado" : "Sin configurar"}
+                    </span>
+                  </div>
+                  <p className="text-[11px] font-light tracking-wider text-neutral-500 mt-2">{p.description}</p>
+                </div>
+
+                <div className="px-4 lg:px-6 py-5 space-y-4">
+                  {p.fields.map((field) => (
+                    <div key={field.key}>
+                      <label className="block text-[10px] font-bold tracking-[0.2em] mb-2">{field.label}</label>
+                      {field.isSelect ? (
+                        <div className="flex gap-2">
+                          <select
+                            value={formData[p.platform]?.[field.key] || ""}
+                            onChange={(e) => handleChange(p.platform, field.key, e.target.value)}
+                            disabled={loadingOffices || offices.length === 0}
+                            className="flex-1 px-4 py-3 text-xs tracking-widest disabled:bg-neutral-50 disabled:text-neutral-400"
+                          >
+                            <option value="">
+                              {loadingOffices
+                                ? "Cargando bodegas..."
+                                : offices.length === 0
+                                ? "Ingresa el Access Token primero"
+                                : "Todas las bodegas (recomendado)"}
+                            </option>
+                            {offices.map((o) => (
+                              <option key={o.id} value={String(o.id)}>
+                                {o.name} (ID: {o.id})
+                              </option>
+                            ))}
+                          </select>
+                          {offices.length === 0 && !loadingOffices && formData["bsale"]?.accessToken && (
+                            <button
+                              onClick={() => loadOffices(formData["bsale"]?.accessToken || "")}
+                              className="px-4 py-3 border border-black text-[10px] font-bold tracking-[0.2em] hover:bg-black hover:text-white"
+                              title="Recargar bodegas"
+                            >
+                              ↻
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <input
+                          type={field.type || "text"}
+                          value={formData[p.platform]?.[field.key] || ""}
+                          onChange={(e) => handleChange(p.platform, field.key, e.target.value)}
+                          placeholder={field.placeholder}
+                          className="w-full px-4 py-3 text-xs font-mono tracking-wider"
+                        />
+                      )}
+                    </div>
+                  ))}
+
+                  <div className="border border-black p-4">
+                    <p className="text-[10px] font-bold tracking-[0.2em] mb-2">URL de Webhook</p>
+                    <code className="text-[11px] font-mono break-all text-neutral-700">
+                      {typeof window !== "undefined" ? window.location.origin : "https://tu-app.railway.app"}{webhookPaths[p.platform]}
+                    </code>
+                  </div>
+
+                  {test && !test.loading && (
+                    <div className="p-3 border border-black text-[11px] font-light tracking-wider">
+                      {test.ok ? "✓ " : "✗ "}{test.message}
+                    </div>
+                  )}
+
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
+                    <button
+                      onClick={() => handleTest(p.platform)}
+                      disabled={test?.loading}
+                      className="text-[11px] font-bold tracking-[0.25em] underline underline-offset-[6px] hover:no-underline disabled:opacity-40 self-start flex items-center gap-2"
+                    >
+                      {test?.loading && (
+                        <span className="w-3 h-3 border border-current border-t-transparent animate-spin inline-block" />
+                      )}
+                      {test?.loading ? "Verificando..." : "Verificar Conexión"}
+                    </button>
+
+                    <div className="flex items-center gap-4">
+                      {saved === p.platform && (
+                        <span className="text-[10px] font-bold tracking-[0.2em]">✓ Guardado</span>
+                      )}
+                      <button
+                        onClick={() => handleSave(p.platform)}
+                        disabled={saving === p.platform}
+                        className="text-[11px] font-bold tracking-[0.25em] underline underline-offset-[6px] hover:no-underline disabled:opacity-40"
+                      >
+                        {saving === p.platform ? "Guardando..." : "Guardar"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
     </div>
   );
 }

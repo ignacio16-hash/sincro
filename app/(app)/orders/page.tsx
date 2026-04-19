@@ -155,7 +155,7 @@ export default function OrdersPage() {
         <button
           onClick={load}
           disabled={loading}
-          className="w-full sm:w-auto px-6 py-3 text-xs font-bold tracking-[0.2em] border border-black hover:bg-black hover:text-white disabled:opacity-40 flex items-center justify-center gap-2"
+          className="self-start text-xs font-bold tracking-[0.25em] underline underline-offset-[6px] hover:no-underline disabled:opacity-40 flex items-center gap-2"
         >
           {loading && <span className="w-3 h-3 border border-current border-t-transparent animate-spin inline-block" />}
           Actualizar
@@ -163,7 +163,7 @@ export default function OrdersPage() {
       </div>
 
       {error && (
-        <div className="mb-6 p-4 border border-black bg-black text-white text-xs font-light tracking-wider">
+        <div className="mb-6 p-4 border border-black text-xs font-light tracking-wider">
           {error}
         </div>
       )}
@@ -181,17 +181,17 @@ export default function OrdersPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-0 mb-6 border border-black">
+      <div className="flex gap-8 mb-6 border-b border-neutral-200 pb-4">
         {([
           { key: "ripley" as MarketTab, label: `Ripley (${totalRipley})` },
           { key: "falabella" as MarketTab, label: `Falabella (${totalFalabella})` },
-        ]).map((t, i) => (
+        ]).map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
             data-active={tab === t.key}
-            className={`flex-1 px-4 py-3 text-xs tracking-[0.2em] ${i === 0 ? "border-r border-black" : ""} ${
-              tab === t.key ? "bg-black text-white font-bold" : "font-light hover:bg-neutral-100"
+            className={`text-xs tracking-[0.2em] pb-1 ${
+              tab === t.key ? "font-bold border-b border-black" : "font-light text-neutral-500 hover:text-black"
             }`}
           >
             {t.label}

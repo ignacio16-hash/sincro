@@ -108,7 +108,7 @@ export default function LogsPage() {
           </select>
           <button
             onClick={load}
-            className="px-5 py-3 text-xs font-bold tracking-[0.2em] border border-black hover:bg-black hover:text-white"
+            className="text-xs font-bold tracking-[0.25em] underline underline-offset-[6px] hover:no-underline self-start sm:self-center"
           >
             Actualizar
           </button>
@@ -221,14 +221,15 @@ export default function LogsPage() {
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="px-5 py-2 text-[11px] font-bold tracking-[0.2em] border border-black disabled:opacity-30 hover:bg-black hover:text-white"
+                className="text-[11px] font-bold tracking-[0.2em] underline underline-offset-[6px] hover:no-underline disabled:opacity-30 disabled:no-underline"
               >
                 Anterior
               </button>
+              <span className="text-neutral-300 font-light">|</span>
               <button
                 onClick={() => setPage((p) => Math.min(pages, p + 1))}
                 disabled={page === pages}
-                className="px-5 py-2 text-[11px] font-bold tracking-[0.2em] border border-black disabled:opacity-30 hover:bg-black hover:text-white"
+                className="text-[11px] font-bold tracking-[0.2em] underline underline-offset-[6px] hover:no-underline disabled:opacity-30 disabled:no-underline"
               >
                 Siguiente
               </button>

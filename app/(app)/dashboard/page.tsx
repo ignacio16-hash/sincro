@@ -140,11 +140,11 @@ export default function DashboardPage() {
         <button
           onClick={handleManualSync}
           disabled={syncing}
-          className="w-full sm:w-auto bg-black text-white px-8 py-3 text-xs font-bold tracking-[0.2em] hover:bg-neutral-800 disabled:opacity-40 flex items-center justify-center gap-3"
+          className="self-start text-xs font-bold tracking-[0.25em] underline underline-offset-[6px] hover:no-underline disabled:opacity-40 flex items-center gap-3"
         >
-          {syncing ? (
-            <span className="w-3 h-3 border border-white border-t-transparent animate-spin inline-block" />
-          ) : null}
+          {syncing && (
+            <span className="w-3 h-3 border border-current border-t-transparent animate-spin inline-block" />
+          )}
           {syncing ? "Sincronizando..." : "Sync Manual"}
         </button>
       </div>
@@ -184,9 +184,7 @@ export default function DashboardPage() {
 
       {/* Final result */}
       {!syncing && syncResult && (
-        <div className={`mb-6 p-4 border text-xs tracking-wider font-light ${
-          syncResult.ok ? "border-black bg-neutral-50" : "border-black bg-black text-white"
-        }`}>
+        <div className="mb-6 p-4 border border-black text-xs tracking-wider font-light">
           {syncResult.message}
         </div>
       )}

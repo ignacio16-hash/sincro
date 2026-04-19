@@ -77,21 +77,31 @@ export default function StockPage() {
             {total.toLocaleString()} SKUs sincronizados desde Bsale
           </p>
         </div>
-        <div className="flex flex-col sm:flex-row gap-3">
+        <div className="flex flex-col sm:flex-row gap-6 items-start sm:items-center">
           <button
             onClick={refreshCatalog}
             disabled={refreshing}
-            className="bg-black text-white px-6 py-3 text-xs font-bold tracking-[0.2em] hover:bg-neutral-800 disabled:opacity-40"
+            className="text-[11px] font-bold tracking-[0.25em] underline underline-offset-[6px] hover:no-underline disabled:opacity-40"
           >
             {refreshing ? "Refrescando..." : "Refrescar Catálogo"}
           </button>
-          <input
-            type="text"
-            placeholder="Buscar SKU o nombre..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="flex-1 sm:w-72 px-4 py-3 text-xs tracking-widest"
-          />
+          <div className="relative flex-1 sm:flex-none sm:w-80">
+            <input
+              type="text"
+              placeholder="Buscar"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full bg-transparent border-0 border-b border-black py-2 pr-6 text-xs tracking-widest focus:outline-none"
+            />
+            <svg
+              className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 text-black pointer-events-none"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="square" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
         </div>
       </div>
 
@@ -168,14 +178,15 @@ export default function StockPage() {
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="px-5 py-2 text-[11px] font-bold tracking-[0.2em] border border-black disabled:opacity-30 hover:bg-black hover:text-white"
+                className="text-[11px] font-bold tracking-[0.2em] underline underline-offset-[6px] hover:no-underline disabled:opacity-30 disabled:no-underline"
               >
                 Anterior
               </button>
+              <span className="text-neutral-300 font-light">|</span>
               <button
                 onClick={() => setPage((p) => Math.min(pages, p + 1))}
                 disabled={page === pages}
-                className="px-5 py-2 text-[11px] font-bold tracking-[0.2em] border border-black disabled:opacity-30 hover:bg-black hover:text-white"
+                className="text-[11px] font-bold tracking-[0.2em] underline underline-offset-[6px] hover:no-underline disabled:opacity-30 disabled:no-underline"
               >
                 Siguiente
               </button>
