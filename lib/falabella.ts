@@ -330,8 +330,54 @@ async function getFalabellaProductsListOnly(
   return results;
 }
 
-// getAllFalabellaSkus = GetProducts (lista de SKUs) + GetStock (stock real por lote).
-// Si GetProducts devuelve E009, cae a FetchStock (stock-read permission only).
+// GetStock bulk sin filtro SellerSku: pagina con Limit=1000 + Offset
+// y suma SellerWarehouses por SKU. Mucho más rápido que batches de 5.
+// Docs: "El número máximo de SKUs por respuesta es de 1000".
+export async function getAllFalabellaStock(
+  apiKey: string,
+  userId: string,
+  country = "CL"
+): Promise<Map<string, number>> {
+  const baseUrl = BASE_URLS[country] || BASE_URLS.CL;
+  const client = getClient(userId);
+  const agg = new Map<string, number>();
+  const LIMIT = 1000;
+  let offset = 0;
+
+  while (true) {
+    const extra: Record<string, string> = { Limit: String(LIMIT) };
+    if (offset > 0) extra.Offset = String(offset);
+    const url = buildSignedUrl(baseUrl, "GetStock", userId, apiKey, extra);
+    const { data } = await client.get(url);
+
+    const errorCode = data?.Head?.ErrorCode ?? data?.ErrorResponse?.Head?.ErrorCode;
+    if (errorCode) {
+      const msg = data?.Head?.ErrorMessage ?? data?.ErrorResponse?.Head?.ErrorMessage ?? JSON.stringify(data);
+      throw new Error(`Falabella GetStock error ${errorCode}: ${msg}`);
+    }
+
+    const raw = data?.SuccessResponse?.Body?.Stocks?.SellerWarehouses ?? data?.Body?.Stocks?.SellerWarehouses;
+    if (offset === 0 && raw == null) {
+      console.warn("[Falabella GetStock bulk] shape inesperada:", JSON.stringify(data).slice(0, 500));
+    }
+    const items: Record<string, unknown>[] = Array.isArray(raw)
+      ? raw : raw && typeof raw === "object" ? [raw as Record<string, unknown>] : [];
+
+    for (const item of items) {
+      const sku = String(item.Sku || item.SellerSku || "");
+      if (!sku) continue;
+      const qty = parseInt(String(item.Quantity ?? "0"), 10) || 0;
+      agg.set(sku, (agg.get(sku) || 0) + qty);
+    }
+
+    if (items.length < LIMIT) break;
+    offset += LIMIT;
+  }
+
+  return agg;
+}
+
+// getAllFalabellaSkus = GetProducts (lista SKU+nombre) + GetStock bulk (stock real).
 export async function getAllFalabellaSkus(
   apiKey: string,
   userId: string,
@@ -351,14 +397,8 @@ export async function getAllFalabellaSkus(
 
   if (skuList.length === 0) return [];
 
-  // GetStock (batch 5) para el stock real
-  const stocks = await getFalabellaStockForSkus(
-    apiKey,
-    userId,
-    skuList.map((s) => s.sku),
-    country
-  );
-  const stockMap = new Map(stocks.map((s) => [s.sku, s.quantity]));
+  // GetStock bulk (1 llamada por cada 1000 SKUs)
+  const stockMap = await getAllFalabellaStock(apiKey, userId, country);
 
   return skuList.map((s) => ({
     sku: s.sku,
