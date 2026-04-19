@@ -270,19 +270,20 @@ async function getFalabellaSkusViaFetchStock(
   return results;
 }
 
-export async function getAllFalabellaSkus(
+// GetProducts paginado (Limit max 1000 oficial) → lista de SKUs + nombres.
+// NOTA: el campo Quantity de GetProducts NO refleja el stock sellable real
+// — usar GetStock separado para el stock verdadero.
+async function getFalabellaProductsListOnly(
   apiKey: string,
   userId: string,
-  country = "CL"
-): Promise<{ sku: string; name: string; quantity: number }[]> {
+  country: string
+): Promise<{ sku: string; name: string }[]> {
   const baseUrl = BASE_URLS[country] || BASE_URLS.CL;
-  const results: { sku: string; name: string; quantity: number }[] = [];
+  const results: { sku: string; name: string }[] = [];
   let offset = 0;
-  const limit = 100;
+  const limit = 1000; // máximo oficial por respuesta
 
   while (true) {
-    // Filter is required by Falabella Seller Center GetProducts (per docs example URL).
-    // "all" = all products regardless of status.
     const extra: Record<string, string> = { Filter: "all", Limit: String(limit) };
     if (offset > 0) extra.Offset = String(offset);
     const url = buildSignedUrl(baseUrl, "GetProducts", userId, apiKey, extra);
@@ -291,12 +292,6 @@ export async function getAllFalabellaSkus(
 
     const errorCode = data?.Head?.ErrorCode ?? data?.ErrorResponse?.Head?.ErrorCode;
     if (errorCode) {
-      // E009 = Access Denied — API key lacks GetProducts permission.
-      // Fall back to FetchStock which only needs stock-read permission.
-      if (String(errorCode) === "9" || String(errorCode).toUpperCase() === "E009") {
-        console.warn("[Falabella] GetProducts denied (E009), falling back to FetchStock");
-        return getFalabellaSkusViaFetchStock(apiKey, userId, country);
-      }
       const msg = data?.Head?.ErrorMessage ?? data?.ErrorResponse?.Head?.ErrorMessage ?? JSON.stringify(data);
       throw new Error(`Falabella GetProducts error ${errorCode}: ${msg}`);
     }
@@ -304,24 +299,15 @@ export async function getAllFalabellaSkus(
     const raw =
       data?.SuccessResponse?.Body?.Products?.Product ??
       data?.Body?.Products?.Product;
-
     if (raw == null) {
       throw new Error(`Falabella GetProducts: estructura inesperada: ${JSON.stringify(data).slice(0, 300)}`);
     }
-
     const products: Record<string, unknown>[] = Array.isArray(raw)
-      ? raw
-      : typeof raw === "object" ? [raw as Record<string, unknown>] : [];
+      ? raw : typeof raw === "object" ? [raw as Record<string, unknown>] : [];
 
     for (const p of products) {
       const sku = String(p.SellerSku || "");
-      if (sku) {
-        results.push({
-          sku,
-          name: String(p.Name || ""),
-          quantity: parseInt(String(p.Quantity ?? "0"), 10),
-        });
-      }
+      if (sku) results.push({ sku, name: String(p.Name || "") });
     }
 
     if (products.length < limit) break;
@@ -329,6 +315,43 @@ export async function getAllFalabellaSkus(
   }
 
   return results;
+}
+
+// getAllFalabellaSkus = GetProducts (lista de SKUs) + GetStock (stock real por lote).
+// Si GetProducts devuelve E009, cae a FetchStock (stock-read permission only).
+export async function getAllFalabellaSkus(
+  apiKey: string,
+  userId: string,
+  country = "CL"
+): Promise<{ sku: string; name: string; quantity: number }[]> {
+  let skuList: { sku: string; name: string }[] = [];
+  try {
+    skuList = await getFalabellaProductsListOnly(apiKey, userId, country);
+  } catch (e) {
+    const msg = (e as Error).message;
+    if (/E009|error 9:/i.test(msg)) {
+      console.warn("[Falabella] GetProducts denied (E009), fallback a FetchStock");
+      return getFalabellaSkusViaFetchStock(apiKey, userId, country);
+    }
+    throw e;
+  }
+
+  if (skuList.length === 0) return [];
+
+  // GetStock (batch 5) para el stock real
+  const stocks = await getFalabellaStockForSkus(
+    apiKey,
+    userId,
+    skuList.map((s) => s.sku),
+    country
+  );
+  const stockMap = new Map(stocks.map((s) => [s.sku, s.quantity]));
+
+  return skuList.map((s) => ({
+    sku: s.sku,
+    name: s.name,
+    quantity: stockMap.get(s.sku) ?? 0,
+  }));
 }
 
 // Escape XML special chars to evitar romper el payload con SKUs que contengan &, <, >, etc.
