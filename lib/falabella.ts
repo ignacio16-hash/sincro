@@ -184,6 +184,10 @@ export async function getFalabellaStockForSkus(
   const results: { sku: string; name: string; quantity: number }[] = [];
   const BATCH = 5; // Falabella limit: GetStock acepta max 5 SellerSkus por request
 
+  // Acumulador para sumar stock de múltiples facilities por SKU (sin FacilityId,
+  // Falabella devuelve una entry por facility para cada SKU).
+  const agg = new Map<string, { name: string; quantity: number }>();
+
   for (let i = 0; i < skus.length; i += BATCH) {
     const chunk = skus.slice(i, i + BATCH);
     const extra: Record<string, string> = {
@@ -200,25 +204,43 @@ export async function getFalabellaStockForSkus(
       throw new Error(`Falabella GetStock error ${errorCode}: ${msg}`);
     }
 
+    // Per docs: Body.ProductStockList.Product[]. Fallbacks para shapes históricas.
     const raw =
+      data?.SuccessResponse?.Body?.ProductStockList?.Product ??
+      data?.Body?.ProductStockList?.Product ??
       data?.SuccessResponse?.Body?.Skus?.Sku ??
       data?.Body?.Skus?.Sku ??
       data?.SuccessResponse?.Body?.Stock?.Sku ??
-      data?.Body?.Stock?.Sku;
+      data?.Body?.Stock?.Sku ??
+      data?.SuccessResponse?.Body?.Products?.Product ??
+      data?.Body?.Products?.Product;
+
+    if (raw == null && i === 0) {
+      console.warn("[Falabella GetStock] shape inesperada:", JSON.stringify(data).slice(0, 500));
+    }
     const items: Record<string, unknown>[] = Array.isArray(raw)
       ? raw : raw && typeof raw === "object" ? [raw as Record<string, unknown>] : [];
 
     for (const item of items) {
       const sku = String(item.SellerSku || item.ShopSku || "");
       if (!sku) continue;
-      results.push({
-        sku,
-        name: String(item.Name || ""),
-        quantity: parseInt(String(item.Available ?? item.SellableStock ?? item.Quantity ?? "0"), 10),
-      });
+      const qty = parseInt(
+        String(
+          item.SellableStock ??
+          item.Available ??
+          item.Quantity ??
+          (item.Stock as Record<string, unknown>)?.SellableStock ??
+          "0"
+        ),
+        10
+      ) || 0;
+      const prev = agg.get(sku);
+      if (prev) prev.quantity += qty;
+      else agg.set(sku, { name: String(item.Name || ""), quantity: qty });
     }
   }
 
+  for (const [sku, { name, quantity }] of agg) results.push({ sku, name, quantity });
   return results;
 }
 
