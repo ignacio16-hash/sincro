@@ -66,7 +66,9 @@ function getClient(userId: string) {
 
 // ─── Stock ───────────────────────────────────────────────────────────────────
 
-// Update stock for a single SKU via ProductUpdate XML feed
+// Update stock via UpdateStock XML feed.
+// Docs: https://developers.falabella.com/v500.0.0/reference/updatestock
+// Action=UpdateStock (no ProductUpdate). Fields: SellerSKU, Quantity.
 export async function updateFalabellaStock(
   apiKey: string,
   userId: string,
@@ -75,11 +77,11 @@ export async function updateFalabellaStock(
   country = "CL"
 ): Promise<string> {
   const baseUrl = BASE_URLS[country] || BASE_URLS.CL;
-  const url = buildSignedUrl(baseUrl, "ProductUpdate", userId, apiKey);
+  const url = buildSignedUrl(baseUrl, "UpdateStock", userId, apiKey);
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Request>
   <Product>
-    <SellerSku>${sku}</SellerSku>
+    <SellerSKU>${xmlEscape(sku)}</SellerSKU>
     <Quantity>${quantity}</Quantity>
   </Product>
 </Request>`;
@@ -97,7 +99,10 @@ export async function getFalabellaStock(
   country = "CL"
 ): Promise<number> {
   const baseUrl = BASE_URLS[country] || BASE_URLS.CL;
-  const url = buildSignedUrl(baseUrl, "GetProducts", userId, apiKey, { SellerSku: sku });
+  // GetProducts usa SkuSellerList (array JSON), no SellerSku.
+  const url = buildSignedUrl(baseUrl, "GetProducts", userId, apiKey, {
+    SkuSellerList: JSON.stringify([sku]),
+  });
   const client = getClient(userId);
   const { data } = await client.get(url);
   const products = data?.SuccessResponse?.Body?.Products?.Product || [];
@@ -105,9 +110,66 @@ export async function getFalabellaStock(
   return parseInt(product?.Quantity || "0", 10);
 }
 
+// GetProducts para una lista de SKUs → retorna imagen + nombre + stock.
+// Docs: https://developers.falabella.com/v500.0.0/reference/getproducts
+// Param: SkuSellerList (array JSON). Response: Products.Product[] con Images.Image[].
+export async function getFalabellaProductsInfo(
+  apiKey: string,
+  userId: string,
+  skus: string[],
+  country = "CL"
+): Promise<Map<string, { name: string; imageUrl: string | null; quantity: number }>> {
+  const result = new Map<string, { name: string; imageUrl: string | null; quantity: number }>();
+  if (skus.length === 0) return result;
+  const baseUrl = BASE_URLS[country] || BASE_URLS.CL;
+  const client = getClient(userId);
+  const BATCH = 50;
+
+  for (let i = 0; i < skus.length; i += BATCH) {
+    const chunk = skus.slice(i, i + BATCH);
+    const url = buildSignedUrl(baseUrl, "GetProducts", userId, apiKey, {
+      SkuSellerList: JSON.stringify(chunk),
+      Limit: "1000",
+    });
+    try {
+      const { data } = await client.get(url);
+      const errorCode = data?.Head?.ErrorCode ?? data?.ErrorResponse?.Head?.ErrorCode;
+      if (errorCode) continue; // silencioso — endpoint puede no estar habilitado
+      const raw =
+        data?.SuccessResponse?.Body?.Products?.Product ??
+        data?.Body?.Products?.Product;
+      const products: Record<string, unknown>[] = Array.isArray(raw)
+        ? raw : raw && typeof raw === "object" ? [raw as Record<string, unknown>] : [];
+
+      for (const p of products) {
+        const sku = String(p.SellerSku || "");
+        if (!sku) continue;
+        // Images puede venir como {Image: [...]} o {Image: "url"} o array directo
+        const imagesContainer = p.Images as Record<string, unknown> | undefined;
+        let imageUrl: string | null = null;
+        if (imagesContainer) {
+          const imgNode = imagesContainer.Image;
+          if (Array.isArray(imgNode)) imageUrl = String(imgNode[0] || "") || null;
+          else if (typeof imgNode === "string") imageUrl = imgNode;
+          else if (imgNode && typeof imgNode === "object") imageUrl = String((imgNode as Record<string, unknown>).Url || "") || null;
+        }
+        result.set(sku, {
+          name: String(p.Name || ""),
+          imageUrl,
+          quantity: parseInt(String(p.Quantity ?? "0"), 10),
+        });
+      }
+    } catch {
+      // continúa con el siguiente batch
+    }
+  }
+
+  return result;
+}
+
 // GetStock — consulta stock de una lista específica de SellerSkus.
-// Requiere param SellerSku con un array JSON encoded. Acepta hasta ~100 por batch.
 // Docs: https://developers.falabella.com/v500.0.0/reference/getstock
+// LÍMITE OFICIAL: máximo 5 SKUs por request (param SellerSku = array JSON).
 // Uso: cuando GetProducts/FetchStock retornan E009 (permisos), pero GetStock sí funciona.
 export async function getFalabellaStockForSkus(
   apiKey: string,
@@ -119,7 +181,7 @@ export async function getFalabellaStockForSkus(
   const baseUrl = BASE_URLS[country] || BASE_URLS.CL;
   const client = getClient(userId);
   const results: { sku: string; name: string; quantity: number }[] = [];
-  const BATCH = 50;
+  const BATCH = 5; // Falabella limit: GetStock acepta max 5 SellerSkus por request
 
   for (let i = 0; i < skus.length; i += BATCH) {
     const chunk = skus.slice(i, i + BATCH);
@@ -275,8 +337,8 @@ function xmlEscape(s: string): string {
     .replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 }
 
-// ProductUpdate acepta múltiples <Product> en un solo payload → 1 request en vez de N.
-// Docs: https://developers.falabella.com/v500.0.0/reference/productupdate
+// UpdateStock acepta múltiples <Product> en un solo payload → 1 request en vez de N.
+// Docs: https://developers.falabella.com/v500.0.0/reference/updatestock
 // Dividimos en batches de 500 para evitar payloads demasiado grandes.
 export async function batchUpdateFalabellaStock(
   apiKey: string,
@@ -294,10 +356,10 @@ export async function batchUpdateFalabellaStock(
   for (let i = 0; i < items.length; i += BATCH) {
     const chunk = items.slice(i, i + BATCH);
     const products = chunk
-      .map((it) => `<Product><SellerSku>${xmlEscape(it.sku)}</SellerSku><Quantity>${it.quantity}</Quantity></Product>`)
+      .map((it) => `<Product><SellerSKU>${xmlEscape(it.sku)}</SellerSKU><Quantity>${it.quantity}</Quantity></Product>`)
       .join("");
     const xml = `<?xml version="1.0" encoding="UTF-8"?><Request>${products}</Request>`;
-    const url = buildSignedUrl(baseUrl, "ProductUpdate", userId, apiKey);
+    const url = buildSignedUrl(baseUrl, "UpdateStock", userId, apiKey);
     try {
       const { data } = await client.post(url, `payload=${encodeURIComponent(xml)}`, {
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -383,6 +445,25 @@ export async function getFalabellaOrdersList(
     });
   }
 
+  // Enriquecer items con imágenes/nombres desde GetProducts (batch único).
+  const allSkus = [...new Set(results.flatMap((o) => o.items.map((i) => i.sku).filter(Boolean)))];
+  if (allSkus.length > 0) {
+    try {
+      const info = await getFalabellaProductsInfo(apiKey, userId, allSkus, country);
+      for (const ord of results) {
+        for (const item of ord.items) {
+          const found = info.get(item.sku);
+          if (found) {
+            if (found.imageUrl) item.imageUrl = found.imageUrl;
+            if (!item.name && found.name) item.name = found.name;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[Falabella] GetProducts enrichment falló:", (e as Error).message);
+    }
+  }
+
   // Ensure newest-first sort
   results.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   return results;
@@ -417,11 +498,6 @@ export async function getFalabellaOrderItems(
   return items.map((item) => {
     const sellerSku = String(item.SellerSku || item.Sku || "");
     const shopSku = String(item.ShopSku || "");
-    // Falabella CDN pattern — reusable for many products. Si no existe, el <img>
-    // tiene onError que oculta la imagen.
-    const imageUrl = sellerSku
-      ? `https://falabella.scene7.com/is/image/FalabellaCL/${encodeURIComponent(sellerSku)}?wid=200&hei=200`
-      : null;
     return {
       orderItemId: String(item.OrderItemId || ""),
       sku: sellerSku || shopSku,
@@ -430,7 +506,8 @@ export async function getFalabellaOrderItems(
       quantity: parseInt(String(item.Quantity || "1"), 10),
       price: parseFloat(String(item.PaidPrice || item.UnitPrice || "0")) || 0,
       status: String(item.Status || ""),
-      imageUrl,
+      // La imagen se rellena después con GetProducts (via getFalabellaProductsInfo)
+      imageUrl: null,
     };
   });
 }
