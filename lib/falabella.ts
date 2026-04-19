@@ -269,22 +269,50 @@ export async function getAllFalabellaSkus(
   return results;
 }
 
+// Escape XML special chars to evitar romper el payload con SKUs que contengan &, <, >, etc.
+function xmlEscape(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+}
+
+// ProductUpdate acepta múltiples <Product> en un solo payload → 1 request en vez de N.
+// Docs: https://developers.falabella.com/v500.0.0/reference/productupdate
+// Dividimos en batches de 500 para evitar payloads demasiado grandes.
 export async function batchUpdateFalabellaStock(
   apiKey: string,
   userId: string,
   items: { sku: string; quantity: number }[],
   country = "CL"
 ): Promise<{ success: string[]; failed: string[] }> {
+  if (items.length === 0) return { success: [], failed: [] };
+  const baseUrl = BASE_URLS[country] || BASE_URLS.CL;
+  const client = getClient(userId);
   const success: string[] = [];
   const failed: string[] = [];
-  for (const item of items) {
+  const BATCH = 500;
+
+  for (let i = 0; i < items.length; i += BATCH) {
+    const chunk = items.slice(i, i + BATCH);
+    const products = chunk
+      .map((it) => `<Product><SellerSku>${xmlEscape(it.sku)}</SellerSku><Quantity>${it.quantity}</Quantity></Product>`)
+      .join("");
+    const xml = `<?xml version="1.0" encoding="UTF-8"?><Request>${products}</Request>`;
+    const url = buildSignedUrl(baseUrl, "ProductUpdate", userId, apiKey);
     try {
-      await updateFalabellaStock(apiKey, userId, item.sku, item.quantity, country);
-      success.push(item.sku);
+      const { data } = await client.post(url, `payload=${encodeURIComponent(xml)}`, {
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      });
+      const errorCode = data?.Head?.ErrorCode ?? data?.ErrorResponse?.Head?.ErrorCode;
+      if (errorCode) {
+        failed.push(...chunk.map((it) => it.sku));
+      } else {
+        success.push(...chunk.map((it) => it.sku));
+      }
     } catch {
-      failed.push(item.sku);
+      failed.push(...chunk.map((it) => it.sku));
     }
   }
+
   return { success, failed };
 }
 
