@@ -11,13 +11,28 @@ import {
 //   Body opcional: { events: ["order_created"], callbackUrl?: "...", baseUrl?: "..." }
 //   Si no se pasan, usa eventos detectados automáticamente y la URL pública
 //   deducida del request.
-export async function GET() {
+export async function GET(req: NextRequest) {
   const cred = await prisma.apiCredential.findUnique({ where: { platform: "falabella" } });
   const conf = cred?.config as Record<string, string> | undefined;
   if (!conf?.apiKey || !conf?.userId) {
     return NextResponse.json({ error: "Falabella no configurado" }, { status: 400 });
   }
   const country = conf.country || "CL";
+
+  // ?register=1 → registra el webhook directamente (sin POST).
+  //   También acepta ?events=onOrderCreated,onOrderItemsStatusChanged
+  if (req.nextUrl.searchParams.get("register") === "1") {
+    const eventsParam = req.nextUrl.searchParams.get("events");
+    const events = eventsParam ? eventsParam.split(",").map((s) => s.trim()).filter(Boolean) : ["onOrderCreated"];
+    const callbackUrl = `${req.nextUrl.origin}/api/webhooks/falabella`;
+    try {
+      const result = await createFalabellaWebhook(conf.apiKey, conf.userId, callbackUrl, events, country);
+      return NextResponse.json({ ok: true, callbackUrl, events, result });
+    } catch (err) {
+      return NextResponse.json({ error: (err as Error).message, callbackUrl, events }, { status: 500 });
+    }
+  }
+
   try {
     const [entities, hooks] = await Promise.all([
       getFalabellaWebhookEntities(conf.apiKey, conf.userId, country),
