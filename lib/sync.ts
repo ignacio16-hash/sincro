@@ -6,7 +6,7 @@ import {
   resolveSkuToVariantId,
 } from "./bsale";
 import { batchUpdateParisStock } from "./paris";
-import { batchUpdateFalabellaStock, getFalabellaOrders, getFalabellaStockForSkus } from "./falabella";
+import { batchUpdateFalabellaStock, getFalabellaOrders, getFalabellaStockForSkus, getAllFalabellaSkus } from "./falabella";
 import { batchUpdateRipleyStock, getPendingRipleyOrders, getAllRipleySkus } from "./ripley";
 
 export type Platform = "paris" | "falabella" | "ripley";
@@ -37,7 +37,7 @@ function failedSummary(failed: string[]): string {
 // llamadas costosas; el sync de cada 15 min solo empuja el stock cacheado en DB.
 export async function refreshBsaleCatalog(
   onProgress?: (event: SyncProgressEvent) => void
-): Promise<{ status: string; bsaleCount: number; matched: { falabella: number; ripley: number; paris: number }; errors: string[] }> {
+): Promise<{ status: string; bsaleCount: number; matchedTotal?: number; matched: { falabella: number; ripley: number; paris: number }; errors: string[] }> {
   const start = Date.now();
   const errors: string[] = [];
   const matched = { falabella: 0, ripley: 0, paris: 0 };
@@ -54,7 +54,7 @@ export async function refreshBsaleCatalog(
   try {
     const officeId = bsaleCreds.officeId ? parseInt(bsaleCreds.officeId) : undefined;
     bsaleSkus = await getAllBsaleSkus(bsaleCreds.accessToken, officeId);
-    onProgress?.({ stage: "bsale", message: `${bsaleSkus.length} SKUs de Bsale`, percent: 25, status: "ok" });
+    onProgress?.({ stage: "bsale", message: `${bsaleSkus.length} SKUs de Bsale`, percent: 20, status: "ok" });
   } catch (e) {
     const msg = `Bsale: ${(e as Error).message}`;
     errors.push(msg);
@@ -62,104 +62,115 @@ export async function refreshBsaleCatalog(
     onProgress?.({ stage: "bsale", message: msg, percent: 100, status: "error" });
     return { status: "error", bsaleCount: 0, matched, errors };
   }
+  const bsaleMap = new Map(bsaleSkus.map((s) => [s.sku, s]));
 
-  // 2. Upsert en StockItem (base de verdad)
-  for (const item of bsaleSkus) {
+  // 2. Fetch Falabella SKUs (GetProducts/FetchStock, fallback GetStock con SKUs de Bsale)
+  const falabellaMap = new Map<string, { quantity: number }>();
+  const falabellaCreds = await getCredentials("falabella");
+  if (falabellaCreds?.apiKey && falabellaCreds?.userId) {
+    onProgress?.({ stage: "match_falabella", message: "Consultando Falabella...", percent: 35 });
+    try {
+      const country = falabellaCreds.country || "CL";
+      let fStocks: { sku: string; name: string; quantity: number }[] = [];
+      try {
+        fStocks = await getAllFalabellaSkus(falabellaCreds.apiKey, falabellaCreds.userId, country);
+      } catch (e) {
+        const msg = (e as Error).message;
+        if (/E009|error 9:/i.test(msg)) {
+          console.warn("[Catalog] Falabella GetProducts/FetchStock E009, fallback a GetStock");
+          fStocks = await getFalabellaStockForSkus(
+            falabellaCreds.apiKey,
+            falabellaCreds.userId,
+            bsaleSkus.map((s) => s.sku),
+            country
+          );
+        } else {
+          throw e;
+        }
+      }
+      for (const fs of fStocks) falabellaMap.set(fs.sku, { quantity: fs.quantity });
+      onProgress?.({ stage: "match_falabella", message: `Falabella: ${falabellaMap.size} SKUs en la cuenta`, percent: 50, status: "ok" });
+    } catch (e) {
+      const msg = `Falabella: ${(e as Error).message}`;
+      errors.push(msg);
+      onProgress?.({ stage: "match_falabella", message: msg, percent: 50, status: "error" });
+    }
+  }
+
+  // 3. Fetch Ripley SKUs (OF21)
+  const ripleyMap = new Map<string, { quantity: number }>();
+  const ripleyCreds = await getCredentials("ripley");
+  if (ripleyCreds?.apiKey && ripleyCreds?.instanceUrl) {
+    onProgress?.({ stage: "match_ripley", message: "Consultando Ripley...", percent: 60 });
+    try {
+      const rOffers = await getAllRipleySkus(ripleyCreds.apiKey, ripleyCreds.instanceUrl);
+      for (const r of rOffers) ripleyMap.set(r.sku, { quantity: r.quantity });
+      onProgress?.({ stage: "match_ripley", message: `Ripley: ${ripleyMap.size} offers en la cuenta`, percent: 75, status: "ok" });
+    } catch (e) {
+      const msg = `Ripley: ${(e as Error).message}`;
+      errors.push(msg);
+      onProgress?.({ stage: "match_ripley", message: msg, percent: 75, status: "error" });
+    }
+  }
+
+  // Paris: sin endpoint bulk, no podemos determinar match sin per-SKU queries.
+  // Los SKUs que estén solo en Paris no se guardarán (limitación actual).
+
+  // 4. Determinar SKUs que matchean con AL MENOS una integración y persistir
+  onProgress?.({ stage: "persist", message: "Guardando catálogo matcheado...", percent: 85 });
+  const matchedSkus = new Set<string>();
+  for (const b of bsaleSkus) {
+    if (falabellaMap.has(b.sku) || ripleyMap.has(b.sku)) {
+      matchedSkus.add(b.sku);
+    }
+  }
+
+  for (const sku of matchedSkus) {
+    const b = bsaleMap.get(sku)!;
+    const f = falabellaMap.get(sku);
+    const r = ripleyMap.get(sku);
+    if (f) matched.falabella++;
+    if (r) matched.ripley++;
     await prisma.stockItem.upsert({
-      where: { sku: item.sku },
+      where: { sku },
       update: {
-        bsaleStock: item.stock,
-        bsaleVariantId: String(item.variantId),
-        name: item.name,
+        bsaleStock: b.stock,
+        bsaleVariantId: String(b.variantId),
+        name: b.name,
+        falabellaStock: f ? f.quantity : null,
+        ripleyStock: r ? r.quantity : null,
         lastSyncAt: new Date(),
       },
       create: {
-        sku: item.sku,
-        name: item.name,
-        bsaleStock: item.stock,
-        bsaleVariantId: String(item.variantId),
+        sku,
+        name: b.name,
+        bsaleStock: b.stock,
+        bsaleVariantId: String(b.variantId),
+        falabellaStock: f ? f.quantity : null,
+        ripleyStock: r ? r.quantity : null,
         lastSyncAt: new Date(),
       },
     });
   }
 
-  const bsaleSkuSet = new Set(bsaleSkus.map((s) => s.sku));
-
-  // 3. Match Falabella (GetStock batch de 5)
-  const falabellaCreds = await getCredentials("falabella");
-  if (falabellaCreds?.apiKey && falabellaCreds?.userId) {
-    onProgress?.({ stage: "match_falabella", message: "Matching Falabella...", percent: 40 });
-    try {
-      const fStocks = await getFalabellaStockForSkus(
-        falabellaCreds.apiKey,
-        falabellaCreds.userId,
-        [...bsaleSkuSet],
-        falabellaCreds.country || "CL"
-      );
-      const matchedSkus = new Set(fStocks.map((s) => s.sku));
-      for (const fs of fStocks) {
-        await prisma.stockItem.updateMany({ where: { sku: fs.sku }, data: { falabellaStock: fs.quantity } });
-      }
-      // SKUs de Bsale que NO están en Falabella: falabellaStock = null
-      for (const sku of bsaleSkuSet) {
-        if (!matchedSkus.has(sku)) {
-          await prisma.stockItem.updateMany({ where: { sku }, data: { falabellaStock: null } });
-        }
-      }
-      matched.falabella = matchedSkus.size;
-      onProgress?.({ stage: "match_falabella", message: `Falabella: ${matched.falabella} SKUs coinciden`, percent: 55, status: "ok" });
-    } catch (e) {
-      const msg = `Match Falabella: ${(e as Error).message}`;
-      errors.push(msg);
-      onProgress?.({ stage: "match_falabella", message: msg, percent: 55, status: "error" });
-    }
-  }
-
-  // 4. Match Ripley (OF21)
-  const ripleyCreds = await getCredentials("ripley");
-  if (ripleyCreds?.apiKey && ripleyCreds?.instanceUrl) {
-    onProgress?.({ stage: "match_ripley", message: "Matching Ripley...", percent: 65 });
-    try {
-      const rOffers = await getAllRipleySkus(ripleyCreds.apiKey, ripleyCreds.instanceUrl);
-      const matchedSkus = new Set<string>();
-      for (const ro of rOffers) {
-        if (bsaleSkuSet.has(ro.sku)) {
-          await prisma.stockItem.updateMany({ where: { sku: ro.sku }, data: { ripleyStock: ro.quantity } });
-          matchedSkus.add(ro.sku);
-        }
-      }
-      for (const sku of bsaleSkuSet) {
-        if (!matchedSkus.has(sku)) {
-          await prisma.stockItem.updateMany({ where: { sku }, data: { ripleyStock: null } });
-        }
-      }
-      matched.ripley = matchedSkus.size;
-      onProgress?.({ stage: "match_ripley", message: `Ripley: ${matched.ripley} SKUs coinciden`, percent: 80, status: "ok" });
-    } catch (e) {
-      const msg = `Match Ripley: ${(e as Error).message}`;
-      errors.push(msg);
-      onProgress?.({ stage: "match_ripley", message: msg, percent: 80, status: "error" });
-    }
-  }
-
-  // 5. Paris: sin endpoint de listado bulk. Por ahora marcamos todos los Bsale
-  // SKUs como parisStock=0 si no hay previo, para que el sync los incluya.
-  // Un futuro read-back per-SKU podría ajustar esto.
-  onProgress?.({ stage: "match_paris", message: "Paris: sin endpoint bulk, se pushea todo", percent: 90, status: "skipped" });
+  // Limpiar SKUs que ya no matchean (cambio en catálogo de algún marketplace)
+  const deleted = await prisma.stockItem.deleteMany({
+    where: { sku: { notIn: [...matchedSkus] } },
+  });
 
   const duration = Date.now() - start;
   await logSync("catalog_refresh", "all", errors.length === 0 ? "success" : "partial",
-    `Catálogo refrescado: Bsale=${bsaleSkus.length}, Falabella=${matched.falabella}, Ripley=${matched.ripley}`,
-    { bsaleCount: bsaleSkus.length, matched, errors }, duration);
+    `Catálogo: ${matchedSkus.size} SKUs matcheados (${matched.falabella} Falabella, ${matched.ripley} Ripley) · ${deleted.count} eliminados`,
+    { bsaleCount: bsaleSkus.length, matchedTotal: matchedSkus.size, matched, errors }, duration);
 
   onProgress?.({
     stage: "done",
-    message: `Catálogo: ${bsaleSkus.length} Bsale · ${matched.falabella} Falabella · ${matched.ripley} Ripley`,
+    message: `${matchedSkus.size} SKUs guardados · ${matched.falabella} Falabella · ${matched.ripley} Ripley${errors.length ? ` · errores: ${errors.join("; ")}` : ""}`,
     percent: 100,
     status: errors.length === 0 ? "ok" : "partial",
   });
 
-  return { status: errors.length === 0 ? "success" : "partial", bsaleCount: bsaleSkus.length, matched, errors };
+  return { status: errors.length === 0 ? "success" : "partial", bsaleCount: bsaleSkus.length, matchedTotal: matchedSkus.size, matched, errors };
 }
 
 // ─── Stock sync (cada 15 min y manual) ───────────────────────────────────────

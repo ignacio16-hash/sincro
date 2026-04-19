@@ -69,8 +69,9 @@ export default function StockPage() {
       if (!res.ok) {
         setRefreshMsg(`Error: ${json.error || "desconocido"}`);
       } else {
+        const errs = json.errors?.length ? ` · Errores: ${json.errors.join("; ")}` : "";
         setRefreshMsg(
-          `Listo: ${json.bsaleCount} Bsale · ${json.matched.falabella} Falabella · ${json.matched.ripley} Ripley`
+          `Listo: ${json.matchedTotal ?? 0} SKUs guardados (de ${json.bsaleCount} Bsale) · ${json.matched.falabella} Falabella · ${json.matched.ripley} Ripley${errs}`
         );
         await load();
       }
