@@ -614,8 +614,9 @@ export async function getFalabellaWebhooks(
 }
 
 // CreateWebhook — registra un webhook.
-// Formato body (Lazada/SellerCenter): form-urlencoded payload={json}
-// donde json = { CallbackUrl, Events: [...] }
+// Body XML (form-urlencoded payload=<xml>):
+//   <Request><Webhook><CallbackUrl>...</CallbackUrl>
+//     <Events><Event>onOrderCreated</Event>...</Events></Webhook></Request>
 export async function createFalabellaWebhook(
   apiKey: string,
   userId: string,
@@ -626,8 +627,9 @@ export async function createFalabellaWebhook(
   const baseUrl = BASE_URLS[country] || BASE_URLS.CL;
   const url = buildSignedUrl(baseUrl, "CreateWebhook", userId, apiKey);
   const client = getClient(userId);
-  const payload = JSON.stringify({ CallbackUrl: callbackUrl, Events: events });
-  const { data } = await client.post(url, `payload=${encodeURIComponent(payload)}`, {
+  const eventEls = events.map((e) => `<Event>${xmlEscape(e)}</Event>`).join("");
+  const xml = `<?xml version="1.0" encoding="UTF-8"?><Request><Webhook><CallbackUrl>${xmlEscape(callbackUrl)}</CallbackUrl><Events>${eventEls}</Events></Webhook></Request>`;
+  const { data } = await client.post(url, `payload=${encodeURIComponent(xml)}`, {
     headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
   });
   const errorCode = data?.Head?.ErrorCode ?? data?.ErrorResponse?.Head?.ErrorCode;
