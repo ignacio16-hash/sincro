@@ -18,6 +18,7 @@ const PUBLIC_PREFIXES = [
   "/api/auth",
   "/api/webhooks",
   "/api/cron",
+  "/api/health",      // Railway healthcheck — must respond 200 sin auth
   "/_next",
   "/favicon.ico",
 ];
