@@ -54,6 +54,70 @@ function formatDate(s: string) {
   catch { return s; }
 }
 
+// ─── Cache helpers ────────────────────────────────────────────────────────────
+// Guardamos los pedidos ya vistos en localStorage por usuario para que:
+//   · Al volver a la página se muestren de inmediato (sin loader).
+//   · "Actualizar" solo mergee los nuevos en vez de borrar todo.
+// Tope de 500 por marketplace para no pasarnos del cupo (~5MB) de localStorage.
+
+const CACHE_MAX = 500;
+
+function cacheKeys(username: string | null) {
+  const u = username || "anon";
+  return {
+    falabella: `orders:${u}:falabella`,
+    ripley: `orders:${u}:ripley`,
+  };
+}
+
+function readCache<T>(key: string): T[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as T[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeCache<T>(key: string, data: T[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(data));
+  } catch {
+    // quota excedida u otro error — descartamos silenciosamente
+  }
+}
+
+// Merge: el fetch nuevo pisa al caché si el orderId coincide (así un pedido
+// que pasó de "pending" a "shipped" se actualiza). Los que solo están en
+// caché se preservan (quedaron fuera del window de la API pero siguen siendo
+// válidos para la UI).
+function mergeFalabella(cached: FalabellaOrder[], fetched: FalabellaOrder[]): FalabellaOrder[] {
+  const byId = new Map<string, FalabellaOrder>();
+  for (const o of cached) byId.set(o.orderId, o);
+  for (const o of fetched) byId.set(o.orderId, o);
+  return [...byId.values()]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, CACHE_MAX);
+}
+
+function mergeRipley(cached: RipleyOrder[], fetched: RipleyOrder[]): RipleyOrder[] {
+  const byId = new Map<string, RipleyOrder>();
+  for (const o of cached) byId.set(o.orderId, o);
+  for (const o of fetched) byId.set(o.orderId, o);
+  return [...byId.values()]
+    .sort((a, b) => new Date(b.createdDate).getTime() - new Date(a.createdDate).getTime())
+    .slice(0, CACHE_MAX);
+}
+
+function countNew<T extends { orderId: string }>(cached: T[], fetched: T[]): number {
+  const seen = new Set(cached.map((o) => o.orderId));
+  return fetched.filter((o) => !seen.has(o.orderId)).length;
+}
+
 // Etiquetas de estado SOLO para mostrar en la UI.
 // Nunca usar estas traducciones para filtrar, comparar o enviar a las APIs —
 // los estados crudos (pending, SHIPPING, etc.) tienen que seguir siendo la
@@ -146,7 +210,7 @@ function DownloadLabelButton({
         disabled={loading}
         className="text-[10px] font-bold tracking-[0.2em] px-3 py-2 border border-black hover:bg-black hover:text-white disabled:opacity-40 flex items-center gap-2"
       >
-        {loading && <span className="w-2 h-2 border border-current border-t-transparent animate-spin inline-block" />}
+        {loading && <span className="w-2 h-2 border border-current border-t-transparent rounded-full animate-spin inline-block" />}
         Etiqueta PDF
       </button>
       {error && <p className="text-[10px] font-light text-red-700 tracking-wider">{error}</p>}
@@ -161,6 +225,40 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<MarketTab>("ripley");
+  const [username, setUsername] = useState<string | null>(null);
+  const [userResolved, setUserResolved] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
+  // Resolver el usuario primero para namespar las keys de caché.
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then((d: { user: { username: string } | null }) => setUsername(d.user?.username ?? null))
+      .catch(() => setUsername(null))
+      .finally(() => setUserResolved(true));
+  }, []);
+
+  // Hidratar desde caché una vez que sepamos el usuario (incluso si /me falló,
+  // caemos a "anon" como fallback). Si no hay nada cacheado, disparamos el
+  // fetch inicial; si hay algo, lo mostramos y esperamos a que el usuario
+  // apriete "Actualizar".
+  useEffect(() => {
+    if (!userResolved) return;
+    const keys = cacheKeys(username);
+    const cachedF = readCache<FalabellaOrder>(keys.falabella);
+    const cachedR = readCache<RipleyOrder>(keys.ripley);
+    const hasCache = cachedF.length > 0 || cachedR.length > 0;
+    setData({ falabella: cachedF, ripley: cachedR });
+    if (!hasCache) void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userResolved, username]);
+
+  // Toast de "N pedidos nuevos" durante 5s.
+  useEffect(() => {
+    if (!toast) return;
+    const id = window.setTimeout(() => setToast(null), 5000);
+    return () => window.clearTimeout(id);
+  }, [toast]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -169,15 +267,30 @@ export default function OrdersPage() {
       const res = await fetch("/api/orders");
       const json = await res.json();
       if (!res.ok) { setError(json.error || "Error al cargar pedidos"); return; }
-      setData(json);
+
+      const keys = cacheKeys(username);
+      const prevF = readCache<FalabellaOrder>(keys.falabella);
+      const prevR = readCache<RipleyOrder>(keys.ripley);
+      const fetchedF: FalabellaOrder[] = json.falabella ?? [];
+      const fetchedR: RipleyOrder[] = json.ripley ?? [];
+
+      const mergedF = mergeFalabella(prevF, fetchedF);
+      const mergedR = mergeRipley(prevR, fetchedR);
+      writeCache(keys.falabella, mergedF);
+      writeCache(keys.ripley, mergedR);
+      setData({ falabella: mergedF, ripley: mergedR });
+
+      // Solo mostramos toast en refresh (cuando ya había algo cacheado).
+      const nuevos = countNew(prevF, fetchedF) + countNew(prevR, fetchedR);
+      if ((prevF.length > 0 || prevR.length > 0) && nuevos > 0) {
+        setToast(`${nuevos} pedido${nuevos === 1 ? "" : "s"} nuevo${nuevos === 1 ? "" : "s"}`);
+      }
     } catch {
       setError("Error de red");
     } finally {
       setLoading(false);
     }
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
+  }, [username]);
 
   // Conteos por estado clave: pending (Falabella) y SHIPPING (Ripley)
   const falabellaPending = data?.falabella.filter((o) => o.status === "pending").length ?? 0;
@@ -185,6 +298,17 @@ export default function OrdersPage() {
 
   return (
     <div className="px-4 sm:px-6 lg:px-10 py-6 lg:py-10">
+      {/* Toast — aparece 5s cuando "Actualizar" trae pedidos nuevos */}
+      {toast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed top-4 right-4 z-50 bg-black text-white text-[11px] font-bold tracking-[0.2em] px-4 py-3 border border-black shadow-lg"
+        >
+          {toast}
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6 lg:mb-10 pb-6 border-b border-black">
         <div>
@@ -198,7 +322,7 @@ export default function OrdersPage() {
           disabled={loading}
           className="self-start text-xs font-bold tracking-[0.25em] underline underline-offset-[6px] hover:no-underline disabled:opacity-40 flex items-center gap-2"
         >
-          {loading && <span className="w-3 h-3 border border-current border-t-transparent animate-spin inline-block" />}
+          {loading && <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin inline-block" />}
           Actualizar
         </button>
       </div>
