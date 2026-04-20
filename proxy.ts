@@ -5,7 +5,7 @@
 //   · /api/auth/*, GET /api/login-settings       → always accessible
 //   · /api/webhooks/*, /api/cron/*               → always accessible (external)
 //   · everything else                            → requires valid session cookie
-//   · /stock, /orders                            → both roles
+//   · /orders                                    → both roles (única página vendedor)
 //   · everything else inside the app             → admin only
 //
 // Role check inside /api routes is enforced again in the route handlers — this
@@ -24,12 +24,11 @@ const PUBLIC_PREFIXES = [
 ];
 
 // Paths vendedor role can access (prefix-match).
+// Vendedor SOLO puede ver /orders. Cualquier otra cosa lo manda a /orders.
 const VENDEDOR_ALLOWED_PREFIXES = [
-  "/stock",
   "/orders",
-  "/api/stock",
   "/api/orders",
-  "/api/ripley",           // proxy de imágenes Ripley
+  "/api/ripley",           // proxy de imágenes Ripley (usado en /orders)
   "/api/auth",
   "/api/login-settings",   // read-only for login
 ];
@@ -68,8 +67,8 @@ export function proxy(req: NextRequest) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "Sin permiso" }, { status: 403 });
     }
-    // Send vendedor to /stock (their home)
-    return NextResponse.redirect(new URL("/stock", req.url));
+    // Send vendedor to /orders (su única página).
+    return NextResponse.redirect(new URL("/orders", req.url));
   }
 
   return NextResponse.next();

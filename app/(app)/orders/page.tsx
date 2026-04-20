@@ -54,10 +54,48 @@ function formatDate(s: string) {
   catch { return s; }
 }
 
-function StateChip({ state }: { state: string }) {
+// Etiquetas de estado SOLO para mostrar en la UI.
+// Nunca usar estas traducciones para filtrar, comparar o enviar a las APIs —
+// los estados crudos (pending, SHIPPING, etc.) tienen que seguir siendo la
+// única fuente de verdad en la lógica.
+const FALABELLA_STATE_ES: Record<string, string> = {
+  pending: "Pendiente",
+  canceled: "Cancelado",
+  ready_to_ship: "Listo para envío",
+  shipped: "Enviado",
+  delivered: "Entregado",
+  returned: "Devuelto",
+  failed: "Fallido",
+};
+
+const RIPLEY_STATE_ES: Record<string, string> = {
+  STAGING: "Borrador",
+  WAITING_ACCEPTANCE: "Esperando aceptación",
+  WAITING_DEBIT: "Esperando pago",
+  WAITING_DEBIT_PAYMENT: "Esperando pago",
+  SHIPPING: "En preparación",
+  SHIPPED: "Enviado",
+  TO_COLLECT: "Por recoger",
+  RECEIVED: "Recibido",
+  CLOSED: "Cerrado",
+  REFUSED: "Rechazado",
+  CANCELED: "Cancelado",
+  REFUNDED: "Reembolsado",
+  INCIDENT_OPEN: "Incidencia abierta",
+};
+
+function translateState(market: "falabella" | "ripley", state: string): string {
+  if (!state) return "—";
+  if (market === "falabella") {
+    return FALABELLA_STATE_ES[state.toLowerCase()] ?? state;
+  }
+  return RIPLEY_STATE_ES[state.toUpperCase()] ?? state;
+}
+
+function StateChip({ state, market }: { state: string; market: "falabella" | "ripley" }) {
   return (
     <span className="inline-block text-[10px] font-bold tracking-[0.2em] border border-black px-2 py-0.5">
-      {state}
+      {translateState(market, state)}
     </span>
   );
 }
@@ -218,7 +256,7 @@ export default function OrdersPage() {
                     <span className="text-[10px] font-light tracking-[0.25em] text-neutral-500">Orden #</span>
                     <span className="font-mono text-sm font-bold mt-1">{order.orderId}</span>
                   </div>
-                  <StateChip state={order.orderState} />
+                  <StateChip state={order.orderState} market="ripley" />
                   <span className="text-[10px] font-light tracking-widest text-neutral-400">{formatDate(order.createdDate)}</span>
                 </div>
                 <DownloadLabelButton platform="ripley" orderId={order.orderId} />
@@ -261,7 +299,7 @@ export default function OrdersPage() {
                       <p className="text-xs font-bold tracking-wider">
                         {order.currencyCode} {line.price.toLocaleString("es-CL")}
                       </p>
-                      <StateChip state={line.orderLineState} />
+                      <StateChip state={line.orderLineState} market="ripley" />
                     </div>
                   </div>
                 ))}
@@ -289,7 +327,7 @@ export default function OrdersPage() {
                       <span className="font-mono text-[10px] font-light text-neutral-400 mt-0.5">id: {order.orderId}</span>
                     )}
                   </div>
-                  <StateChip state={order.status} />
+                  <StateChip state={order.status} market="falabella" />
                   <span className="text-[10px] font-light tracking-widest text-neutral-400">{formatDate(order.createdAt)}</span>
                 </div>
                 <DownloadLabelButton
@@ -346,7 +384,7 @@ export default function OrdersPage() {
                       <p className="text-xs font-bold tracking-wider">
                         CLP {item.price.toLocaleString("es-CL")}
                       </p>
-                      <StateChip state={item.status} />
+                      <StateChip state={item.status} market="falabella" />
                     </div>
                   </div>
                 ))}

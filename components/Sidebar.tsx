@@ -11,7 +11,7 @@ interface SessionUser { username: string; role: Role }
 // Full nav + minimum role
 const NAV = [
   { href: "/dashboard",  label: "Dashboard",     roles: ["admin"] as Role[] },
-  { href: "/stock",      label: "Stock",         roles: ["admin", "vendedor"] as Role[] },
+  { href: "/stock",      label: "Stock",         roles: ["admin"] as Role[] },
   { href: "/orders",     label: "Pedidos",       roles: ["admin", "vendedor"] as Role[] },
   { href: "/sku-match",  label: "Match SKUs",    roles: ["admin"] as Role[] },
   { href: "/logs",       label: "Logs",          roles: ["admin"] as Role[] },
@@ -54,7 +54,10 @@ export default function Sidebar() {
     <>
       {/* ─── Mobile top bar ────────────────────────────────────────────── */}
       <header className="lg:hidden sticky top-0 z-40 flex items-center justify-between border-b border-black bg-white px-4 h-14">
-        <Link href="/stock" className="font-bold text-lg tracking-[0.02em]">
+        <Link
+          href={user?.role === "vendedor" ? "/orders" : "/dashboard"}
+          className="font-bold text-lg tracking-[0.02em]"
+        >
           Parrot
         </Link>
         <div className="flex items-center gap-3">
@@ -140,7 +143,7 @@ export default function Sidebar() {
       {/* ─── Desktop sidebar ───────────────────────────────────────────── */}
       <aside className="hidden lg:flex w-60 xl:w-64 shrink-0 min-h-screen bg-white border-r border-black flex-col">
         <div className="px-8 pt-10 pb-8">
-          <Link href={user?.role === "vendedor" ? "/stock" : "/dashboard"}>
+          <Link href={user?.role === "vendedor" ? "/orders" : "/dashboard"}>
             <p className="font-bold text-2xl xl:text-3xl tracking-[0.02em] leading-none">
               Parrot
             </p>
