@@ -208,8 +208,16 @@ export async function getRipleyOrders(
           if (!orderId) return;
           try {
             // OR15: GET /api/orders/{order_id}
+            // Mirakl puede devolver el detalle plano  { order_lines: [...] }
+            // o envuelto         { orders: [{ order_lines: [...] }] }
+            // Manejamos ambos casos.
             const { data: detail } = await client.get(`/api/orders/${encodeURIComponent(orderId)}`);
-            const lines = (detail?.order_lines as Record<string, unknown>[]) || [];
+            const wrapped = (detail?.orders as Record<string, unknown>[] | undefined)?.[0];
+            const orderObj = (wrapped ?? detail) as Record<string, unknown> | undefined;
+            const lines = (orderObj?.order_lines as Record<string, unknown>[]) || [];
+            if (lines.length === 0) {
+              console.warn(`[Ripley OR15] orden ${orderId}: respuesta sin order_lines (keys=${Object.keys(detail || {}).join(",")})`);
+            }
             for (const line of lines) {
               const url = pickMedia(line.product_medias as Record<string, string>[] | undefined);
               const lineId = String(line.order_line_id || "");

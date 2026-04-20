@@ -242,6 +242,8 @@ export default function OrdersPage() {
                           src={line.imageUrl}
                           alt={line.productTitle}
                           className="w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
+                          loading="lazy"
                           onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                         />
                       ) : (
@@ -314,6 +316,8 @@ export default function OrdersPage() {
                           src={item.imageUrl}
                           alt={item.name}
                           className="w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
+                          loading="lazy"
                           onError={(e) => {
                             const img = e.target as HTMLImageElement;
                             img.style.display = "none";
