@@ -149,25 +149,44 @@ export interface RipleyOrder {
 }
 
 // OR11: List orders with full line detail (product_medias for images).
-// Mirakl defaults to sort-by-creation-date ASC, so naively using max=20 returns
-// the OLDEST 20 orders. We fetch the last 90 days, sort client-side desc, and
-// slice the newest 20.
+//
+// Mirakl OR11 paginates con `offset` + `max` (max=100 page size) y devuelve
+// `total_count` en el body. Iteramos hasta cubrir el rango o tocar el cap
+// para obtener un universo amplio de pedidos sin bloquear demasiado tiempo.
+//
+// Doc: https://developer.mirakl.com/content/product/mmp/rest/operator/openapi3/orders/or11.md
 export async function getRipleyOrders(
   apiKey: string,
   instanceUrl: string,
   stateCodes?: string, // comma-separated, e.g. "WAITING_ACCEPTANCE,SHIPPING"
-  take = 20
+  take = 50
 ): Promise<RipleyOrder[]> {
   const client = getClient(apiKey, instanceUrl);
   const startDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
-  const params: Record<string, string | number> = {
-    max: 100,
-    start_date: startDate,
-  };
-  if (stateCodes) params.order_state_codes = stateCodes;
 
-  const { data } = await client.get("/api/orders", { params });
-  const orders: Record<string, unknown>[] = data?.orders || [];
+  const PAGE_SIZE = 100;
+  const MAX_PAGES = 5; // hasta 500 órdenes — defensa contra ciclos infinitos.
+
+  const orders: Record<string, unknown>[] = [];
+  let offset = 0;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const params: Record<string, string | number> = {
+      max: PAGE_SIZE,
+      offset,
+      start_date: startDate,
+    };
+    if (stateCodes) params.order_state_codes = stateCodes;
+
+    const { data } = await client.get("/api/orders", { params });
+    const batch: Record<string, unknown>[] = data?.orders || [];
+    if (batch.length === 0) break;
+    orders.push(...batch);
+
+    const total = Number(data?.total_count ?? 0);
+    offset += batch.length;
+    if (batch.length < PAGE_SIZE) break;
+    if (total > 0 && offset >= total) break;
+  }
 
   orders.sort(
     (a, b) =>
@@ -177,12 +196,21 @@ export async function getRipleyOrders(
 
   const taken = orders.slice(0, take);
 
-  // Pequeña utilidad: extrae la mejor URL de imagen de un arreglo product_medias
-  // (preferencia por type=small como recomienda la doc de Ripley).
+  // Extrae la mejor URL de imagen de un arreglo product_medias.
+  //
+  // - type viene en MAYÚSCULAS en Ripley/Mirakl ("SMALL", "MEDIUM", "LARGE").
+  // - media_url viene RELATIVA al instance ("/media/product/image/<uuid>") y
+  //   requiere Authorization para descargarse, así que nunca puede usarse
+  //   directamente en una <img>. Devolvemos un proxy interno que inyecta la
+  //   api-key del lado del servidor: /api/ripley/media?path=<path>
   function pickMedia(medias: Record<string, string>[] | undefined): string | null {
     if (!medias || medias.length === 0) return null;
-    const small = medias.find((m) => m.type === "small");
-    return (small || medias[0])?.media_url ?? null;
+    const small = medias.find((m) => String(m.type).toUpperCase() === "SMALL");
+    const raw = (small || medias[0])?.media_url;
+    if (!raw) return null;
+    // Si por alguna razón viene absoluta (otro tenant), igual la pasamos por proxy
+    // para evitar 403 por hotlink.
+    return `/api/ripley/media?path=${encodeURIComponent(raw)}`;
   }
 
   // ── Fallback OR15 (detalle por orden): orders/{order_id} sí trae product_medias.

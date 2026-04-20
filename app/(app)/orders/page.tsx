@@ -141,8 +141,9 @@ export default function OrdersPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const totalRipley = data?.ripley.length ?? 0;
-  const totalFalabella = data?.falabella.length ?? 0;
+  // Conteos por estado clave: pending (Falabella) y SHIPPING (Ripley)
+  const falabellaPending = data?.falabella.filter((o) => o.status === "pending").length ?? 0;
+  const ripleyShipping = data?.ripley.filter((o) => o.orderState === "SHIPPING").length ?? 0;
 
   return (
     <div className="px-4 sm:px-6 lg:px-10 py-6 lg:py-10">
@@ -170,23 +171,13 @@ export default function OrdersPage() {
         </div>
       )}
 
-      {/* Summary */}
-      <div className="grid grid-cols-2 gap-0 mb-6 border border-black">
-        <div className="p-5 border-r border-black">
-          <p className="text-[10px] font-light tracking-[0.25em] text-neutral-500">Ripley</p>
-          <p className="text-3xl lg:text-4xl font-bold mt-2">{totalRipley}</p>
-        </div>
-        <div className="p-5">
-          <p className="text-[10px] font-light tracking-[0.25em] text-neutral-500">Falabella</p>
-          <p className="text-3xl lg:text-4xl font-bold mt-2">{totalFalabella}</p>
-        </div>
-      </div>
-
-      {/* Tabs */}
+      {/* Tabs — el conteo entre paréntesis es solo el de pedidos en el estado clave:
+            · Ripley   → SHIPPING
+            · Falabella → pending */}
       <div className="flex gap-8 mb-6 border-b border-neutral-200 pb-4">
         {([
-          { key: "ripley" as MarketTab, label: `Ripley (${totalRipley})` },
-          { key: "falabella" as MarketTab, label: `Falabella (${totalFalabella})` },
+          { key: "ripley" as MarketTab, label: `Ripley (${ripleyShipping})` },
+          { key: "falabella" as MarketTab, label: `Falabella (${falabellaPending})` },
         ]).map((t) => (
           <button
             key={t.key}

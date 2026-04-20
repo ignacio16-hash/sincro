@@ -29,6 +29,7 @@ const VENDEDOR_ALLOWED_PREFIXES = [
   "/orders",
   "/api/stock",
   "/api/orders",
+  "/api/ripley",           // proxy de imágenes Ripley
   "/api/auth",
   "/api/login-settings",   // read-only for login
 ];
