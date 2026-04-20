@@ -549,8 +549,15 @@ export async function getFalabellaOrdersList(
   country = "CL"
 ): Promise<FalabellaOrder[]> {
   const baseUrl = BASE_URLS[country] || BASE_URLS.CL;
-  // Fetch last 20 orders across all statuses, sorted by created date descending
-  const extra: Record<string, string> = { Limit: "20", SortBy: "created_at", SortDirection: "DESC" };
+  // GetOrders v2 — incluye warehouse de origen y, según la doc, también
+  // PromisedShippingTime. SortBy en v2 está fijo a updated_at, por lo que
+  // no enviamos SortBy y solo controlamos la dirección.
+  // Doc: https://developers.falabella.com/v500.0.0/reference/getordersv2
+  const extra: Record<string, string> = {
+    Version: "2.0",
+    Limit: "20",
+    SortDirection: "DESC",
+  };
   const url = buildSignedUrl(baseUrl, "GetOrders", userId, apiKey, extra);
   const client = getClient(userId);
   const { data } = await client.get(url);
@@ -558,7 +565,7 @@ export async function getFalabellaOrdersList(
   const errorCode = data?.Head?.ErrorCode ?? data?.ErrorResponse?.Head?.ErrorCode;
   if (errorCode) {
     const msg = data?.Head?.ErrorMessage ?? data?.ErrorResponse?.Head?.ErrorMessage ?? JSON.stringify(data);
-    throw new Error(`Falabella GetOrders error ${errorCode}: ${msg}`);
+    throw new Error(`Falabella GetOrders v2 error ${errorCode}: ${msg}`);
   }
 
   const raw =
