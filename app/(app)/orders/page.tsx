@@ -54,29 +54,6 @@ function formatDate(s: string) {
   catch { return s; }
 }
 
-// "YYYY-MM-DD" en hora de Chile para una fecha ISO (o para hoy si se omite).
-// Usamos toLocaleDateString con timeZone explícito para evitar saltos por TZ del navegador.
-function chileDateKey(iso?: string | null): string | null {
-  const d = iso ? new Date(iso) : new Date();
-  if (isNaN(d.getTime())) return null;
-  // sv-SE devuelve YYYY-MM-DD, fácil de comparar.
-  return d.toLocaleDateString("sv-SE", { timeZone: "America/Santiago" });
-}
-
-function isDueToday(promised: string | null): boolean {
-  if (!promised) return false;
-  const target = chileDateKey(promised);
-  const today = chileDateKey();
-  return target !== null && target === today;
-}
-
-function isOverdue(promised: string | null): boolean {
-  if (!promised) return false;
-  const target = chileDateKey(promised);
-  const today = chileDateKey();
-  return target !== null && today !== null && target < today;
-}
-
 function StateChip({ state }: { state: string }) {
   return (
     <span className="inline-block text-[10px] font-bold tracking-[0.2em] border border-black px-2 py-0.5">
@@ -166,8 +143,6 @@ export default function OrdersPage() {
 
   const totalRipley = data?.ripley.length ?? 0;
   const totalFalabella = data?.falabella.length ?? 0;
-  const falabellaDueToday = data?.falabella.filter((o) => isDueToday(o.promisedShippingTime)).length ?? 0;
-  const falabellaOverdue = data?.falabella.filter((o) => isOverdue(o.promisedShippingTime)).length ?? 0;
 
   return (
     <div className="px-4 sm:px-6 lg:px-10 py-6 lg:py-10">
@@ -196,48 +171,16 @@ export default function OrdersPage() {
       )}
 
       {/* Summary */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-0 mb-6 border border-black">
-        <div className="p-5 border-r border-black border-b lg:border-b-0">
+      <div className="grid grid-cols-2 gap-0 mb-6 border border-black">
+        <div className="p-5 border-r border-black">
           <p className="text-[10px] font-light tracking-[0.25em] text-neutral-500">Ripley</p>
           <p className="text-3xl lg:text-4xl font-bold mt-2">{totalRipley}</p>
         </div>
-        <div className="p-5 lg:border-r border-black border-b lg:border-b-0">
+        <div className="p-5">
           <p className="text-[10px] font-light tracking-[0.25em] text-neutral-500">Falabella</p>
           <p className="text-3xl lg:text-4xl font-bold mt-2">{totalFalabella}</p>
         </div>
-        <div className="p-5 border-r border-black">
-          <p className="text-[10px] font-light tracking-[0.25em] text-neutral-500">Falabella · Hoy</p>
-          <p className="text-3xl lg:text-4xl font-bold mt-2">{falabellaDueToday}</p>
-          <p className="text-[10px] font-light tracking-widest text-neutral-400 mt-2">
-            Entrega al operador hoy
-          </p>
-        </div>
-        <div className="p-5">
-          <p className="text-[10px] font-light tracking-[0.25em] text-neutral-500">Falabella · Atrasado</p>
-          <p className="text-3xl lg:text-4xl font-bold mt-2">{falabellaOverdue}</p>
-          <p className="text-[10px] font-light tracking-widest text-neutral-400 mt-2">
-            Fecha tope vencida
-          </p>
-        </div>
       </div>
-
-      {/* Highlight banner when there is work due today */}
-      {falabellaDueToday > 0 && (
-        <div className="mb-6 border border-black p-4 flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-light tracking-[0.25em] text-neutral-500">FALABELLA · ENTREGA HOY</p>
-            <p className="text-sm font-bold tracking-widest mt-1">
-              {falabellaDueToday} {falabellaDueToday === 1 ? "pedido debe" : "pedidos deben"} salir hoy al operador logístico
-            </p>
-          </div>
-          <button
-            onClick={() => setTab("falabella")}
-            className="text-[11px] font-bold tracking-[0.25em] underline underline-offset-[6px] hover:no-underline"
-          >
-            Ver pedidos
-          </button>
-        </div>
-      )}
 
       {/* Tabs */}
       <div className="flex gap-8 mb-6 border-b border-neutral-200 pb-4">
@@ -355,24 +298,6 @@ export default function OrdersPage() {
                   </div>
                   <StateChip state={order.status} />
                   <span className="text-[10px] font-light tracking-widest text-neutral-400">{formatDate(order.createdAt)}</span>
-                  {order.promisedShippingTime && (
-                    <span
-                      className={`inline-block text-[10px] font-bold tracking-[0.2em] border px-2 py-0.5 ${
-                        isOverdue(order.promisedShippingTime)
-                          ? "border-black bg-black text-white"
-                          : isDueToday(order.promisedShippingTime)
-                          ? "border-black"
-                          : "border-neutral-300 text-neutral-500"
-                      }`}
-                      title="PromisedShippingTime — fecha tope para entregar al operador logístico"
-                    >
-                      {isDueToday(order.promisedShippingTime)
-                        ? `HOY · ${formatDate(order.promisedShippingTime)}`
-                        : isOverdue(order.promisedShippingTime)
-                        ? `VENCIDO · ${formatDate(order.promisedShippingTime)}`
-                        : `Entrega ${formatDate(order.promisedShippingTime)}`}
-                    </span>
-                  )}
                 </div>
                 <DownloadLabelButton
                   platform="falabella"
