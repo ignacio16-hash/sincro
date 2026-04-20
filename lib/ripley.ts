@@ -177,20 +177,68 @@ export async function getRipleyOrders(
 
   const taken = orders.slice(0, take);
 
-  // Reunir todos los SKUs sin imagen en las líneas para batch lookup en /api/offers
+  // Pequeña utilidad: extrae la mejor URL de imagen de un arreglo product_medias
+  // (preferencia por type=small como recomienda la doc de Ripley).
+  function pickMedia(medias: Record<string, string>[] | undefined): string | null {
+    if (!medias || medias.length === 0) return null;
+    const small = medias.find((m) => m.type === "small");
+    return (small || medias[0])?.media_url ?? null;
+  }
+
+  // ── Fallback OR15 (detalle por orden): orders/{order_id} sí trae product_medias.
+  // OR11 (lista) en algunos tenants Mirakl omite product_medias en las líneas;
+  // según la doc de Ripley, el detalle (OR15) los devuelve siempre.
+  // Solo consultamos las órdenes que tengan al menos una línea sin imagen, con
+  // un cap de paralelismo para no saturar.
+  const needsDetail = taken.filter((o) =>
+    ((o.order_lines as Record<string, unknown>[]) || []).some(
+      (line) => !pickMedia(line.product_medias as Record<string, string>[] | undefined)
+    )
+  );
+
+  // mediasByLineId: order_line_id → media_url, poblado vía OR15
+  const mediasByLineId = new Map<string, string>();
+  if (needsDetail.length > 0) {
+    const CONCURRENCY = 4;
+    for (let i = 0; i < needsDetail.length; i += CONCURRENCY) {
+      const batch = needsDetail.slice(i, i + CONCURRENCY);
+      await Promise.all(
+        batch.map(async (o) => {
+          const orderId = String(o.order_id || "");
+          if (!orderId) return;
+          try {
+            // OR15: GET /api/orders/{order_id}
+            const { data: detail } = await client.get(`/api/orders/${encodeURIComponent(orderId)}`);
+            const lines = (detail?.order_lines as Record<string, unknown>[]) || [];
+            for (const line of lines) {
+              const url = pickMedia(line.product_medias as Record<string, string>[] | undefined);
+              const lineId = String(line.order_line_id || "");
+              if (lineId && url) mediasByLineId.set(lineId, url);
+            }
+          } catch (e) {
+            console.warn(`[Ripley OR15] orden ${orderId}:`, (e as Error).message);
+          }
+        })
+      );
+    }
+  }
+
+  // Fallback final por SKU vía /api/offers — solo para líneas que ni OR11 ni OR15
+  // resolvieron (caso raro: producto sin medias en el catálogo del seller).
   const skusSinImagen = new Set<string>();
   for (const o of taken) {
     for (const line of (o.order_lines as Record<string, unknown>[]) || []) {
-      const medias = (line.product_medias as Record<string, string>[]) || [];
-      if (medias.length === 0) {
+      const lineId = String(line.order_line_id || "");
+      const fromOr11 = pickMedia(line.product_medias as Record<string, string>[] | undefined);
+      const fromOr15 = mediasByLineId.get(lineId);
+      if (!fromOr11 && !fromOr15) {
         const sku = String(line.offer_sku || "");
         if (sku) skusSinImagen.add(sku);
       }
     }
   }
 
-  // Lookup en lotes: /api/offers?shop_skus=X,Y,Z retorna product_medias por offer
-  const imageMap = new Map<string, string>();
+  const imageMapBySku = new Map<string, string>();
   if (skusSinImagen.size > 0) {
     try {
       const skusArray = [...skusSinImagen];
@@ -201,24 +249,26 @@ export async function getRipleyOrders(
         });
         for (const offer of offersData?.offers || []) {
           const sku = String(offer.shop_sku || "");
-          const medias: Record<string, string>[] = offer.product_medias || [];
-          const img = medias.find((m) => m.type === "small") || medias[0];
-          if (sku && img?.media_url) imageMap.set(sku, img.media_url);
+          const url = pickMedia(offer.product_medias);
+          if (sku && url) imageMapBySku.set(sku, url);
         }
       }
     } catch (e) {
-      console.warn("[Ripley] No se pudieron obtener imágenes via /api/offers:", (e as Error).message);
+      console.warn("[Ripley] /api/offers fallback:", (e as Error).message);
     }
   }
 
   return taken.map((o) => {
     const lines: RipleyOrderLine[] = ((o.order_lines as Record<string, unknown>[]) || []).map((line) => {
-      const medias: Record<string, string>[] = (line.product_medias as Record<string, string>[]) || [];
-      const img = medias.find((m) => m.type === "small") || medias[0];
+      const lineId = String(line.order_line_id || "");
       const offerSku = String(line.offer_sku || "");
-      const imageUrl = img?.media_url ?? imageMap.get(offerSku) ?? null;
+      const imageUrl =
+        pickMedia(line.product_medias as Record<string, string>[] | undefined) ??
+        mediasByLineId.get(lineId) ??
+        imageMapBySku.get(offerSku) ??
+        null;
       return {
-        orderLineId: String(line.order_line_id || ""),
+        orderLineId: lineId,
         offerSku,
         productTitle: String(line.product_title || ""),
         quantity: Number(line.quantity) || 0,
