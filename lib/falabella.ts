@@ -535,6 +535,10 @@ export interface FalabellaOrder {
   orderNumber: string;   // human-readable number shown in Falabella Seller Center UI
   status: string;
   createdAt: string;
+  // Fecha tope para entregar la orden al operador logístico
+  // (ver https://developers.falabella.com/v500.0.0/reference/getordersv2 — campo PromisedShippingTime).
+  // Formato ISO con TZ devuelto por Falabella, ej "2026-04-20T18:00:00+0000". Null si la orden no la trae.
+  promisedShippingTime: string | null;
   items: FalabellaOrderItem[];
 }
 
@@ -575,11 +579,16 @@ export async function getFalabellaOrdersList(
       items = await getFalabellaOrderItems(apiKey, userId, orderId, country);
     } catch { /* items stay empty if fetch fails */ }
 
+    // PromisedShippingTime — la API la devuelve en GetOrders (ver docs v500.0.0).
+    // Algunos tenants usan PromisedShippingTimes (plural), aceptamos ambas.
+    const pst = order.PromisedShippingTime ?? order.PromisedShippingTimes ?? null;
+
     results.push({
       orderId,
       orderNumber: String(order.OrderNumber || orderId),
       status: String(order.Status || order.OrderStatus || "unknown"),
       createdAt: String(order.CreatedAt || order.CreatedDate || ""),
+      promisedShippingTime: pst ? String(pst) : null,
       items,
     });
   }
