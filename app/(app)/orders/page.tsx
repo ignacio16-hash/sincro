@@ -64,10 +64,56 @@ interface ShopifyOrder {
   shippedBy: string | null;
 }
 
+// ─── Paris ────────────────────────────────────────────────────────────────────
+// Paris entrega una orden como un agrupador (originOrderNumber) que contiene
+// sub-órdenes (subOrderNumber). Cada sub-orden tiene su propio estado de
+// despacho y sus items. Para la UI mostramos las líneas planas con el estado
+// del ITEM (que es el más granular — un item puede estar "delivered" aunque
+// la sub-orden siga "in_preparation"), y el conteo de pendientes agrupa por
+// item no cerrado.
+interface ParisItem {
+  itemId: string;
+  sku: string;
+  parisSku: string;
+  name: string;
+  quantity: number;
+  price: number;
+  status: string;
+  imageUrl: string | null;
+}
+
+interface ParisSubOrder {
+  subOrderNumber: string;
+  status: string;
+  statusId: number | null;
+  carrier: string | null;
+  trackingNumber: string | null;
+  dispatchDate: string | null;
+  items: ParisItem[];
+}
+
+interface ParisOrder {
+  orderId: string;
+  orderNumber: string;
+  createdAt: string;
+  customerName: string | null;
+  subOrders: ParisSubOrder[];
+}
+
+// Mismo criterio que lib/paris.ts#isParisItemPending — duplicado porque el UI
+// no puede importar código server-side libremente. Tolerar variantes tanto en
+// EN como ES para no contar de menos si Paris cambia la descripción del estado.
+const PARIS_CLOSED_STATES = ["delivered", "shipped", "cancelled", "canceled", "returned", "entregado", "enviado", "cancelado"];
+function isParisItemPending(statusName: string): boolean {
+  const s = (statusName || "").toLowerCase();
+  return !PARIS_CLOSED_STATES.some((k) => s.includes(k));
+}
+
 interface OrdersData {
   falabella: FalabellaOrder[];
   ripley: RipleyOrder[];
   shopify: ShopifyOrder[];
+  paris: ParisOrder[];
 }
 
 function formatDate(s: string) {
@@ -90,6 +136,7 @@ function cacheKeys(username: string | null) {
     falabella: `orders:${u}:falabella`,
     ripley: `orders:${u}:ripley`,
     shopify: `orders:${u}:shopify`,
+    paris: `orders:${u}:paris`,
   };
 }
 
@@ -138,6 +185,15 @@ function mergeRipley(cached: RipleyOrder[], fetched: RipleyOrder[]): RipleyOrder
 
 function mergeShopify(cached: ShopifyOrder[], fetched: ShopifyOrder[]): ShopifyOrder[] {
   const byId = new Map<string, ShopifyOrder>();
+  for (const o of cached) byId.set(o.orderId, o);
+  for (const o of fetched) byId.set(o.orderId, o);
+  return [...byId.values()]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, CACHE_MAX);
+}
+
+function mergeParis(cached: ParisOrder[], fetched: ParisOrder[]): ParisOrder[] {
+  const byId = new Map<string, ParisOrder>();
   for (const o of cached) byId.set(o.orderId, o);
   for (const o of fetched) byId.set(o.orderId, o);
   return [...byId.values()]
@@ -497,7 +553,7 @@ function ShopifyShippedToggle({
   );
 }
 
-type MarketTab = "ripley" | "falabella" | "shopify";
+type MarketTab = "ripley" | "falabella" | "shopify" | "paris";
 
 export default function OrdersPage() {
   const [data, setData] = useState<OrdersData | null>(null);
@@ -531,8 +587,9 @@ export default function OrdersPage() {
     const cachedF = readCache<FalabellaOrder>(keys.falabella);
     const cachedR = readCache<RipleyOrder>(keys.ripley);
     const cachedS = readCache<ShopifyOrder>(keys.shopify);
-    const hasCache = cachedF.length > 0 || cachedR.length > 0 || cachedS.length > 0;
-    setData({ falabella: cachedF, ripley: cachedR, shopify: cachedS });
+    const cachedP = readCache<ParisOrder>(keys.paris);
+    const hasCache = cachedF.length > 0 || cachedR.length > 0 || cachedS.length > 0 || cachedP.length > 0;
+    setData({ falabella: cachedF, ripley: cachedR, shopify: cachedS, paris: cachedP });
     if (!hasCache) void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userResolved, username]);
@@ -556,21 +613,25 @@ export default function OrdersPage() {
       const prevF = readCache<FalabellaOrder>(keys.falabella);
       const prevR = readCache<RipleyOrder>(keys.ripley);
       const prevS = readCache<ShopifyOrder>(keys.shopify);
+      const prevP = readCache<ParisOrder>(keys.paris);
       const fetchedF: FalabellaOrder[] = json.falabella ?? [];
       const fetchedR: RipleyOrder[] = json.ripley ?? [];
       const fetchedS: ShopifyOrder[] = json.shopify ?? [];
+      const fetchedP: ParisOrder[] = json.paris ?? [];
 
       const mergedF = mergeFalabella(prevF, fetchedF);
       const mergedR = mergeRipley(prevR, fetchedR);
       const mergedS = mergeShopify(prevS, fetchedS);
+      const mergedP = mergeParis(prevP, fetchedP);
       writeCache(keys.falabella, mergedF);
       writeCache(keys.ripley, mergedR);
       writeCache(keys.shopify, mergedS);
-      setData({ falabella: mergedF, ripley: mergedR, shopify: mergedS });
+      writeCache(keys.paris, mergedP);
+      setData({ falabella: mergedF, ripley: mergedR, shopify: mergedS, paris: mergedP });
 
       // Solo mostramos toast en refresh (cuando ya había algo cacheado).
-      const nuevos = countNew(prevF, fetchedF) + countNew(prevR, fetchedR) + countNew(prevS, fetchedS);
-      const hadAny = prevF.length > 0 || prevR.length > 0 || prevS.length > 0;
+      const nuevos = countNew(prevF, fetchedF) + countNew(prevR, fetchedR) + countNew(prevS, fetchedS) + countNew(prevP, fetchedP);
+      const hadAny = prevF.length > 0 || prevR.length > 0 || prevS.length > 0 || prevP.length > 0;
       if (hadAny && nuevos > 0) {
         setToast(`${nuevos} pedido${nuevos === 1 ? "" : "s"} nuevo${nuevos === 1 ? "" : "s"}`);
       }
@@ -587,6 +648,12 @@ export default function OrdersPage() {
   const falabellaPending = data?.falabella.filter((o) => o.status === "pending").length ?? 0;
   const ripleyShipping = data?.ripley.filter((o) => o.orderState === "SHIPPING").length ?? 0;
   const shopifyPending = data?.shopify.filter((o) => !o.isShipped).length ?? 0;
+  // Paris: contamos órdenes que tengan AL MENOS un item todavía abierto
+  // (pendiente/preparando/listo para despachar — todo lo que no esté entregado,
+  // enviado, cancelado o devuelto).
+  const parisPending = data?.paris.filter((o) =>
+    o.subOrders.some((so) => so.items.some((it) => isParisItemPending(it.status)))
+  ).length ?? 0;
 
   // Toggle de hasLabel después de subir/borrar una etiqueta. Actualiza el
   // estado y el caché para que el cambio persista al navegar.
@@ -629,7 +696,7 @@ export default function OrdersPage() {
         <div>
           <h1 className="text-2xl lg:text-3xl font-bold tracking-[0.15em]">Pedidos</h1>
           <p className="text-[11px] font-light tracking-widest text-neutral-500 mt-2">
-            Órdenes recientes de Falabella y Ripley (Mirakl)
+            Órdenes recientes de Falabella, Ripley, Shopify y Paris
           </p>
         </div>
         <button
@@ -657,6 +724,7 @@ export default function OrdersPage() {
           { key: "ripley" as MarketTab, label: `Ripley (${ripleyShipping})` },
           { key: "falabella" as MarketTab, label: `Falabella (${falabellaPending})` },
           { key: "shopify" as MarketTab, label: `Shopify (${shopifyPending})` },
+          { key: "paris" as MarketTab, label: `Paris (${parisPending})` },
         ]).map((t) => (
           <button
             key={t.key}
@@ -920,6 +988,129 @@ export default function OrdersPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Paris — pestaña solo con órdenes pendientes de despacho.
+          Cada "order" de Paris agrupa una o más sub-órdenes; dentro de cada
+          sub-orden mostramos solo los items que todavía no están cerrados
+          (entregado, enviado, cancelado, devuelto). Si toda la orden ya está
+          cerrada, no se muestra en esta pestaña. */}
+      {data && tab === "paris" && (
+        <div className="space-y-4">
+          {(() => {
+            const pendingOrders = data.paris
+              .map((o) => ({
+                ...o,
+                subOrders: o.subOrders
+                  .map((so) => ({ ...so, items: so.items.filter((it) => isParisItemPending(it.status)) }))
+                  .filter((so) => so.items.length > 0),
+              }))
+              .filter((o) => o.subOrders.length > 0);
+
+            if (pendingOrders.length === 0) {
+              return (
+                <div className="text-center py-20 text-neutral-400 font-light text-xs tracking-widest border border-black">
+                  No hay pedidos de Paris pendientes de despacho
+                </div>
+              );
+            }
+
+            return pendingOrders.map((order) => (
+              <div key={order.orderNumber} className="border border-black overflow-hidden">
+                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 px-4 lg:px-6 py-4 border-b border-black bg-neutral-50">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-light tracking-[0.25em] text-neutral-500">Orden #</span>
+                      <span className="font-mono text-sm font-bold mt-1">{order.orderId}</span>
+                    </div>
+                    <span className="text-[10px] font-light tracking-widest text-neutral-400">{formatDate(order.createdAt)}</span>
+                    {order.customerName && (
+                      <span className="text-[10px] font-light tracking-widest text-neutral-500">{order.customerName}</span>
+                    )}
+                  </div>
+                </div>
+
+                {order.subOrders.map((so) => (
+                  <div key={so.subOrderNumber} className="border-t border-neutral-200 first:border-t-0">
+                    <div className="flex flex-wrap items-center gap-3 px-4 lg:px-6 py-2 bg-neutral-50 border-b border-neutral-200">
+                      <span className="text-[10px] font-light tracking-[0.25em] text-neutral-500">Sub-orden</span>
+                      <span className="font-mono text-xs font-bold">{so.subOrderNumber}</span>
+                      {so.status && (
+                        <span className="text-[10px] font-bold tracking-[0.2em] px-2 py-0.5 border border-black uppercase">
+                          {so.status}
+                        </span>
+                      )}
+                      {so.carrier && (
+                        <span className="text-[10px] font-light tracking-widest text-neutral-500">
+                          {so.carrier}{so.trackingNumber ? ` · ${so.trackingNumber}` : ""}
+                        </span>
+                      )}
+                      {so.dispatchDate && (
+                        <span className="text-[10px] font-light tracking-widest text-neutral-400">
+                          Despacho: {formatDate(so.dispatchDate)}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="divide-y divide-neutral-200">
+                      {so.items.map((item) => (
+                        <div key={item.itemId} className="flex flex-col sm:flex-row sm:items-center gap-4 px-4 lg:px-6 py-4">
+                          <div className="w-16 h-16 bg-neutral-100 flex-shrink-0 overflow-hidden flex items-center justify-center">
+                            {item.imageUrl ? (
+                              <img
+                                src={item.imageUrl}
+                                alt={item.name}
+                                className="w-full h-full object-cover"
+                                referrerPolicy="no-referrer"
+                                loading="lazy"
+                                onError={(e) => {
+                                  const img = e.target as HTMLImageElement;
+                                  img.style.display = "none";
+                                  (img.parentElement?.querySelector("svg") as SVGElement | null)?.style.setProperty("display", "block");
+                                }}
+                              />
+                            ) : null}
+                            <svg
+                              className="w-5 h-5 text-neutral-300"
+                              style={{ display: item.imageUrl ? "none" : "block" }}
+                              fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                            >
+                              <path strokeLinecap="square" strokeWidth={1.5}
+                                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <p className="font-light text-xs tracking-wider truncate">{item.name || "—"}</p>
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                              <span className="text-[10px] font-light tracking-[0.2em] text-neutral-500">SKU Seller</span>
+                              <span className="font-mono text-xs font-bold">{item.sku || "—"}</span>
+                              {item.parisSku && item.parisSku !== item.sku && (
+                                <span className="font-mono text-[10px] font-light text-neutral-400">paris: {item.parisSku}</span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex sm:flex-col sm:text-center items-baseline gap-2">
+                            <p className="text-2xl font-bold">{item.quantity}</p>
+                            <p className="text-[10px] font-light tracking-widest text-neutral-400">Unidades</p>
+                          </div>
+
+                          <div className="flex sm:flex-col items-start sm:items-end gap-2">
+                            <p className="text-xs font-bold tracking-wider">
+                              CLP {item.price.toLocaleString("es-CL")}
+                            </p>
+                            <span className="text-[10px] font-light tracking-[0.2em] uppercase text-neutral-600">{item.status || "—"}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ));
+          })()}
         </div>
       )}
     </div>

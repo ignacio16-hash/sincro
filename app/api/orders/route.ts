@@ -3,23 +3,26 @@ import { prisma } from "@/lib/db";
 import { getRipleyOrders } from "@/lib/ripley";
 import { getFalabellaOrdersList } from "@/lib/falabella";
 import { getShopifyOrders, type ShopifyOrder } from "@/lib/shopify";
+import { getParisOrdersList, type ParisOrder } from "@/lib/paris";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const [falabellaCred, ripleyCred, shopifyCred] = await Promise.all([
+    const [falabellaCred, ripleyCred, shopifyCred, parisCred] = await Promise.all([
       prisma.apiCredential.findUnique({ where: { platform: "falabella" } }),
       prisma.apiCredential.findUnique({ where: { platform: "ripley" } }),
       prisma.apiCredential.findUnique({ where: { platform: "shopify" } }),
+      prisma.apiCredential.findUnique({ where: { platform: "paris" } }),
     ]);
 
     const falabellaConf = falabellaCred?.config as Record<string, string> | undefined;
     const ripleyConf = ripleyCred?.config as Record<string, string> | undefined;
     const shopifyConf = shopifyCred?.config as Record<string, string> | undefined;
+    const parisConf = parisCred?.config as Record<string, string> | undefined;
 
     // Fetch from configured marketplaces in parallel
-    const [falabellaOrders, ripleyOrders, shopifyOrders] = await Promise.all([
+    const [falabellaOrders, ripleyOrders, shopifyOrders, parisOrders] = await Promise.all([
       falabellaConf?.apiKey && falabellaConf?.userId
         ? getFalabellaOrdersList(falabellaConf.apiKey, falabellaConf.userId, falabellaConf.country || "CL")
             .catch((e) => { console.error("[Orders] Falabella:", e.message); return []; })
@@ -34,6 +37,11 @@ export async function GET() {
         ? getShopifyOrders(shopifyConf.shopDomain, shopifyConf.accessToken, 50, shopifyConf.apiVersion || undefined)
             .catch((e) => { console.error("[Orders] Shopify:", e.message); return [] as ShopifyOrder[]; })
         : Promise.resolve([] as ShopifyOrder[]),
+
+      parisConf?.apiKey && parisConf?.baseUrl
+        ? getParisOrdersList(parisConf.apiKey, parisConf.baseUrl, { limit: 50, sinceDays: 30 })
+            .catch((e) => { console.error("[Orders] Paris:", e.message); return [] as ParisOrder[]; })
+        : Promise.resolve([] as ParisOrder[]),
     ]);
 
     // Anotar pedidos de Shopify con:
@@ -75,6 +83,7 @@ export async function GET() {
       falabella: falabellaOrders,
       ripley: ripleyOrders,
       shopify: shopifyWithMeta,
+      paris: parisOrders,
     });
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 });

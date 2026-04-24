@@ -3,6 +3,7 @@ import axios from "axios";
 import crypto from "crypto";
 import { prisma } from "@/lib/db";
 import { testShopifyConnection } from "@/lib/shopify";
+import { testParisConnection } from "@/lib/paris";
 
 type TestResult = { ok: boolean; message: string };
 
@@ -27,25 +28,9 @@ async function testBsale(config: Record<string, string>): Promise<TestResult> {
 }
 
 async function testParis(config: Record<string, string>): Promise<TestResult> {
-  if (!config.apiKey) return { ok: false, message: "Falta el Bearer Token" };
-  if (!config.sellerId) return { ok: false, message: "Falta el Seller ID" };
+  if (!config.apiKey) return { ok: false, message: "Falta el API Key" };
   if (!config.baseUrl) return { ok: false, message: "Falta la Base URL" };
-  try {
-    await axios.get(`${config.baseUrl}/sellers/${config.sellerId}/products`, {
-      headers: { Authorization: `Bearer ${config.apiKey}` },
-      params: { limit: 1 },
-      timeout: 8000,
-    });
-    return { ok: true, message: "Conexión exitosa" };
-  } catch (err) {
-    if (axios.isAxiosError(err)) {
-      const s = err.response?.status;
-      if (s === 401 || s === 403) return { ok: false, message: "Credenciales inválidas" };
-      if (s === 404) return { ok: true, message: "Conectado (endpoint alcanzado)" };
-      return { ok: false, message: `Error ${s ?? "de red"}: ${err.message}` };
-    }
-    return { ok: false, message: (err as Error).message };
-  }
+  return testParisConnection(config.apiKey, config.baseUrl);
 }
 
 async function testFalabella(config: Record<string, string>): Promise<TestResult> {

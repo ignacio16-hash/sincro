@@ -26,11 +26,10 @@ const platforms: PlatformConfig[] = [
   {
     platform: "paris",
     label: "Paris (Cencosud)",
-    description: "Credenciales desde https://developers.ecomm.cencosud.com (requiere cuenta de vendedor).",
+    description: "API Key de developers.ecomm.cencosud.com. Se intercambia por un accessToken de 4h via /v1/auth/apiKey. Base URL: prod típicamente api-developers.ecomm.cencosud.com (stg: api-developers.ecomm-stg.cencosud.com).",
     fields: [
-      { key: "apiKey", label: "Bearer Token", placeholder: "tu-bearer-token-de-cencosud", type: "password" },
-      { key: "sellerId", label: "Seller ID", placeholder: "tu-seller-id" },
-      { key: "baseUrl", label: "Base URL API", placeholder: "https://api.cencosud-marketplaces.com" },
+      { key: "apiKey", label: "API Key", placeholder: "tu-api-key-de-cencosud", type: "password" },
+      { key: "baseUrl", label: "Base URL API", placeholder: "https://api-developers.ecomm.cencosud.com" },
     ],
   },
   {

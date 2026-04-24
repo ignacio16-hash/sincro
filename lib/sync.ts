@@ -5,7 +5,7 @@ import {
   getBsaleStockByVariantId,
   resolveSkuToVariantId,
 } from "./bsale";
-import { batchUpdateParisStock } from "./paris";
+import { batchUpdateParisStock, getAllParisSkus, getPendingParisOrders } from "./paris";
 import { batchUpdateFalabellaStock, getFalabellaOrders, getFalabellaStockForSkus, getAllFalabellaSkus } from "./falabella";
 import { batchUpdateRipleyStock, getPendingRipleyOrders, getAllRipleySkus } from "./ripley";
 
@@ -113,14 +113,28 @@ export async function refreshBsaleCatalog(
     }
   }
 
-  // Paris: sin endpoint bulk, no podemos determinar match sin per-SKU queries.
-  // Los SKUs que estén solo en Paris no se guardarán (limitación actual).
+  // 3.b Paris — GET /v2/stock (bulk con paginación) para saber qué SKUs
+  //      nuestros están registrados en Paris. Usa sku_seller.
+  const parisMap = new Map<string, { quantity: number }>();
+  const parisCredsForMatch = await getCredentials("paris");
+  if (parisCredsForMatch?.apiKey && parisCredsForMatch?.baseUrl) {
+    onProgress?.({ stage: "match_paris", message: "Consultando Paris...", percent: 78 });
+    try {
+      const pStocks = await getAllParisSkus(parisCredsForMatch.apiKey, parisCredsForMatch.baseUrl);
+      for (const p of pStocks) parisMap.set(p.sku, { quantity: p.quantity });
+      onProgress?.({ stage: "match_paris", message: `Paris: ${parisMap.size} SKUs en la cuenta`, percent: 82, status: "ok" });
+    } catch (e) {
+      const msg = `Paris: ${(e as Error).message}`;
+      errors.push(msg);
+      onProgress?.({ stage: "match_paris", message: msg, percent: 82, status: "error" });
+    }
+  }
 
   // 4. Determinar SKUs que matchean con AL MENOS una integración y persistir
   onProgress?.({ stage: "persist", message: "Guardando catálogo matcheado...", percent: 85 });
   const matchedSkus = new Set<string>();
   for (const b of bsaleSkus) {
-    if (falabellaMap.has(b.sku) || ripleyMap.has(b.sku)) {
+    if (falabellaMap.has(b.sku) || ripleyMap.has(b.sku) || parisMap.has(b.sku)) {
       matchedSkus.add(b.sku);
     }
   }
@@ -129,8 +143,10 @@ export async function refreshBsaleCatalog(
     const b = bsaleMap.get(sku)!;
     const f = falabellaMap.get(sku);
     const r = ripleyMap.get(sku);
+    const p = parisMap.get(sku);
     if (f) matched.falabella++;
     if (r) matched.ripley++;
+    if (p) matched.paris++;
     await prisma.stockItem.upsert({
       where: { sku },
       update: {
@@ -139,6 +155,7 @@ export async function refreshBsaleCatalog(
         name: b.name,
         falabellaStock: f ? f.quantity : null,
         ripleyStock: r ? r.quantity : null,
+        parisStock: p ? p.quantity : null,
         lastSyncAt: new Date(),
       },
       create: {
@@ -148,6 +165,7 @@ export async function refreshBsaleCatalog(
         bsaleVariantId: String(b.variantId),
         falabellaStock: f ? f.quantity : null,
         ripleyStock: r ? r.quantity : null,
+        parisStock: p ? p.quantity : null,
         lastSyncAt: new Date(),
       },
     });
@@ -160,12 +178,12 @@ export async function refreshBsaleCatalog(
 
   const duration = Date.now() - start;
   await logSync("catalog_refresh", "all", errors.length === 0 ? "success" : "partial",
-    `Catálogo: ${matchedSkus.size} SKUs matcheados (${matched.falabella} Falabella, ${matched.ripley} Ripley) · ${deleted.count} eliminados`,
+    `Catálogo: ${matchedSkus.size} SKUs matcheados (${matched.falabella} Falabella, ${matched.ripley} Ripley, ${matched.paris} Paris) · ${deleted.count} eliminados`,
     { bsaleCount: bsaleSkus.length, matchedTotal: matchedSkus.size, matched, errors }, duration);
 
   onProgress?.({
     stage: "done",
-    message: `${matchedSkus.size} SKUs guardados · ${matched.falabella} Falabella · ${matched.ripley} Ripley${errors.length ? ` · errores: ${errors.join("; ")}` : ""}`,
+    message: `${matchedSkus.size} SKUs guardados · ${matched.falabella} Falabella · ${matched.ripley} Ripley · ${matched.paris} Paris${errors.length ? ` · errores: ${errors.join("; ")}` : ""}`,
     percent: 100,
     status: errors.length === 0 ? "ok" : "partial",
   });
@@ -193,7 +211,7 @@ export async function runFullSync(
 
   // Leer catálogo guardado (alimentado por refreshBsaleCatalog a las 9 y 18hrs)
   const cached = await prisma.stockItem.findMany({
-    select: { sku: true, bsaleStock: true, falabellaStock: true, ripleyStock: true },
+    select: { sku: true, bsaleStock: true, falabellaStock: true, ripleyStock: true, parisStock: true },
   });
 
   if (cached.length === 0) {
@@ -206,31 +224,36 @@ export async function runFullSync(
   onProgress?.({ stage: "bsale", message: `${cached.length} SKUs en catálogo (cached)`, percent: 15, status: "ok" });
   synced = cached.length;
 
-  // Items para Paris (sin matching — pushea todos)
-  const stockItems = cached.map((s) => ({ sku: s.sku, quantity: s.bsaleStock }));
-
-  // Sync Paris
+  // Sync Paris — solo SKUs matcheados (parisStock != null)
   const parisCreds = await getCredentials("paris");
-  if (parisCreds?.apiKey && parisCreds?.sellerId && parisCreds?.baseUrl) {
-    onProgress?.({ stage: "paris", message: "Sincronizando Paris...", percent: 30 });
-    try {
-      const result = await batchUpdateParisStock(
-        parisCreds.apiKey,
-        parisCreds.sellerId,
-        parisCreds.baseUrl,
-        stockItems
-      );
-      const st = result.failed.length === 0 ? "success" : "partial";
-      const msg = `${result.success.length} ok, ${result.failed.length} fallaron${failedSummary(result.failed)}`;
-      await logSync("full_sync", "paris", st, msg,
-        result.failed.length > 0 ? { failed: result.failed } : undefined);
-      onProgress?.({ stage: "paris", message: `Paris: ${msg}`, percent: 45, status: result.failed.length === 0 ? "ok" : "partial" });
-      if (result.failed.length > 0) errors.push(`Paris: ${result.failed.length} fallaron`);
-    } catch (e) {
-      const msg = `Paris: ${(e as Error).message}`;
-      errors.push(msg);
-      await logSync("full_sync", "paris", "error", msg);
-      onProgress?.({ stage: "paris", message: msg, percent: 45, status: "error" });
+  if (parisCreds?.apiKey && parisCreds?.baseUrl) {
+    const parisItems = cached
+      .filter((s) => s.parisStock !== null)
+      .map((s) => ({ sku: s.sku, quantity: s.bsaleStock }));
+    if (parisItems.length === 0) {
+      onProgress?.({ stage: "paris", message: "Paris: sin SKUs matcheados (corre refresh catálogo)", percent: 45, status: "skipped" });
+    } else {
+      onProgress?.({ stage: "paris", message: `Sincronizando Paris (${parisItems.length} SKUs)...`, percent: 30 });
+      try {
+        const result = await batchUpdateParisStock(parisCreds.apiKey, parisCreds.baseUrl, parisItems);
+        const st = result.failed.length === 0 ? "success" : "partial";
+        const errSuffix = result.errorMessages.length > 0 ? ` — ${result.errorMessages[0]}` : "";
+        const msg = `${result.success.length} ok, ${result.failed.length} fallaron${failedSummary(result.failed)}${errSuffix}`;
+        await logSync("full_sync", "paris", st, msg,
+          result.failed.length > 0 ? { failed: result.failed, errorMessages: result.errorMessages } : undefined);
+        onProgress?.({ stage: "paris", message: `Paris: ${msg}`, percent: 45, status: result.failed.length === 0 ? "ok" : "partial" });
+        if (result.failed.length > 0) errors.push(`Paris: ${result.failed.length} fallaron${errSuffix}`);
+
+        for (const sku of result.success) {
+          const bsaleQty = cached.find((c) => c.sku === sku)?.bsaleStock ?? 0;
+          await prisma.stockItem.updateMany({ where: { sku }, data: { parisStock: bsaleQty } });
+        }
+      } catch (e) {
+        const msg = `Paris: ${(e as Error).message}`;
+        errors.push(msg);
+        await logSync("full_sync", "paris", "error", msg);
+        onProgress?.({ stage: "paris", message: msg, percent: 45, status: "error" });
+      }
     }
   } else {
     onProgress?.({ stage: "paris", message: "Paris: no configurado", percent: 45, status: "skipped" });
@@ -350,6 +373,24 @@ export async function pollAndProcessOrders(): Promise<void> {
       }
     } catch (e) {
       console.error("[Orders] Ripley polling error:", (e as Error).message);
+    }
+  }
+
+  // --- Paris (polling obligatorio — la doc no expone webhooks públicos) ---
+  const parisCredsPoll = await getCredentials("paris");
+  if (parisCredsPoll?.apiKey && parisCredsPoll?.baseUrl) {
+    try {
+      const orders = await getPendingParisOrders(parisCredsPoll.apiKey, parisCredsPoll.baseUrl);
+      for (const order of orders) {
+        const exists = await prisma.syncEvent.findFirst({
+          where: { orderId: order.orderId, sku: order.sku, source: "paris" },
+        });
+        if (!exists) {
+          await handleMarketplaceOrder("paris", order.sku, order.quantity, order.orderId);
+        }
+      }
+    } catch (e) {
+      console.error("[Orders] Paris polling error:", (e as Error).message);
     }
   }
 
@@ -479,10 +520,8 @@ export async function handleBsaleStockChange(
 
   // Push updated stock to all marketplaces
   const parisCreds = await getCredentials("paris");
-  if (parisCreds?.apiKey && parisCreds?.sellerId && parisCreds?.baseUrl) {
-    await batchUpdateParisStock(
-      parisCreds.apiKey, parisCreds.sellerId, parisCreds.baseUrl, updatedItem
-    ).catch(() => {});
+  if (parisCreds?.apiKey && parisCreds?.baseUrl && stockItem.parisStock !== null) {
+    await batchUpdateParisStock(parisCreds.apiKey, parisCreds.baseUrl, updatedItem).catch(() => {});
   }
 
   const falabellaCreds = await getCredentials("falabella");
