@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import axios from "axios";
 import crypto from "crypto";
 import { prisma } from "@/lib/db";
+import { testShopifyConnection } from "@/lib/shopify";
 
 type TestResult = { ok: boolean; message: string };
 
@@ -161,6 +162,7 @@ export async function POST(req: NextRequest) {
     case "falabella": result = await testFalabella(config); break;
     case "ripley":    result = await testRipley(config); break;
     case "ripley_svc": result = await testRipleySvc(config); break;
+    case "shopify":   result = await testShopifyConnection(config.shopDomain || "", config.accessToken || "", config.apiVersion || undefined); break;
     default:          result = { ok: false, message: "Plataforma desconocida" };
   }
 

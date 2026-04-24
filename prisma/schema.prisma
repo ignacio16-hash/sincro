@@ -66,6 +66,24 @@ model User {
   updatedAt DateTime @updatedAt
 }
 
+// Etiqueta de envío subida manualmente por un admin para un pedido
+// (principalmente pedidos de Shopify, donde no hay API de labels como en
+// Falabella/Ripley). El admin la sube, admin y vendedor pueden descargarla.
+model ShippingLabel {
+  id         String   @id @default(cuid())
+  platform   String   // "shopify" (por ahora), extensible
+  orderId    String
+  pdf        Bytes
+  mimeType   String   @default("application/pdf")
+  filename   String   @default("etiqueta.pdf")
+  sizeBytes  Int
+  uploadedBy String   // username del admin que la subió
+  uploadedAt DateTime @default(now())
+
+  @@unique([platform, orderId])
+  @@index([platform])
+}
+
 // Singleton row (id="default") with branding for the /login page.
 // logoText replaces the word shown instead of "ZARA" on login.
 // imageUrl points at the right-hand model photo on login.
