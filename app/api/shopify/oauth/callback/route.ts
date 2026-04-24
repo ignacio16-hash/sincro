@@ -90,7 +90,7 @@ export async function GET(req: NextRequest) {
       accessToken,
     };
     if (scope) newConfig.scope = scope;
-    if (!newConfig.apiVersion) newConfig.apiVersion = "2024-10";
+    if (!newConfig.apiVersion) newConfig.apiVersion = "2026-04";
 
     await prisma.apiCredential.upsert({
       where: { platform: "shopify" },

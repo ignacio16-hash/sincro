@@ -1,5 +1,5 @@
 // Shopify Admin API client — solo lectura de pedidos.
-// Docs: https://shopify.dev/docs/api/admin-rest/2024-10/resources/order
+// Docs: https://shopify.dev/docs/api/admin-rest/2026-04/resources/order
 //
 // Auth: Custom App con Access Token. Header "X-Shopify-Access-Token".
 // Scopes requeridos: read_orders, read_products.
@@ -8,7 +8,7 @@
 // apiVersion: default "2024-10".
 import axios from "axios";
 
-const DEFAULT_API_VERSION = "2024-10";
+const DEFAULT_API_VERSION = "2026-04";
 
 export interface ShopifyLineItem {
   lineItemId: string;

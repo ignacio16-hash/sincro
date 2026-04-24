@@ -68,7 +68,7 @@ const platforms: PlatformConfig[] = [
     description: "Solo lectura de pedidos. Usa OAuth — ingresa el Shop Domain y presiona 'Conectar con Shopify'. Scopes: read_orders, read_products.",
     fields: [
       { key: "shopDomain", label: "Shop Domain", placeholder: "mi-tienda.myshopify.com" },
-      { key: "apiVersion", label: "API Version (opcional)", placeholder: "2024-10" },
+      { key: "apiVersion", label: "API Version (opcional)", placeholder: "2026-04" },
     ],
   },
 ];
