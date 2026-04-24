@@ -350,13 +350,16 @@ function ShopifyLabelActions({
     }
     return (
       <div className="flex flex-col items-start gap-1">
+        <span className="text-[9px] font-bold tracking-[0.25em] text-neutral-500 uppercase">
+          Ticket de envío
+        </span>
         <button
           onClick={download}
           disabled={busy !== null}
           className="text-[10px] font-bold tracking-[0.2em] px-3 py-2 border border-black hover:bg-black hover:text-white disabled:opacity-40 flex items-center gap-2"
         >
           {busy === "download" && <span className="w-2 h-2 border border-current border-t-transparent spinner-ring animate-spin inline-block" />}
-          Descargar Etiqueta
+          Descargar ticket
         </button>
         {error && <p className="text-[10px] font-light text-red-700 tracking-wider">{error}</p>}
       </div>
@@ -366,6 +369,9 @@ function ShopifyLabelActions({
   // Admin
   return (
     <div className="flex flex-col items-start gap-2">
+      <span className="text-[9px] font-bold tracking-[0.25em] text-neutral-500 uppercase">
+        Ticket de envío
+      </span>
       <div className="flex flex-wrap items-center gap-2">
         {hasLabel && (
           <button
@@ -374,12 +380,12 @@ function ShopifyLabelActions({
             className="text-[10px] font-bold tracking-[0.2em] px-3 py-2 border border-black hover:bg-black hover:text-white disabled:opacity-40 flex items-center gap-2"
           >
             {busy === "download" && <span className="w-2 h-2 border border-current border-t-transparent spinner-ring animate-spin inline-block" />}
-            Descargar
+            Descargar ticket
           </button>
         )}
         <label className="text-[10px] font-bold tracking-[0.2em] px-3 py-2 border border-black hover:bg-black hover:text-white disabled:opacity-40 flex items-center gap-2 cursor-pointer">
           {busy === "upload" && <span className="w-2 h-2 border border-current border-t-transparent spinner-ring animate-spin inline-block" />}
-          {hasLabel ? "Reemplazar" : "Adjuntar PDF"}
+          {hasLabel ? "Reemplazar ticket" : "Adjuntar ticket (PDF)"}
           <input
             type="file"
             accept="application/pdf"
@@ -576,10 +582,11 @@ export default function OrdersPage() {
   }, [username]);
 
   // Conteos por estado clave: pending (Falabella) y SHIPPING (Ripley).
-  // Para Shopify mostramos el total de pedidos recientes cargados.
+  // Para Shopify contamos solo los pendientes de enviar (no marcados como
+  // enviados localmente).
   const falabellaPending = data?.falabella.filter((o) => o.status === "pending").length ?? 0;
   const ripleyShipping = data?.ripley.filter((o) => o.orderState === "SHIPPING").length ?? 0;
-  const shopifyCount = data?.shopify.length ?? 0;
+  const shopifyPending = data?.shopify.filter((o) => !o.isShipped).length ?? 0;
 
   // Toggle de hasLabel después de subir/borrar una etiqueta. Actualiza el
   // estado y el caché para que el cambio persista al navegar.
@@ -649,7 +656,7 @@ export default function OrdersPage() {
         {([
           { key: "ripley" as MarketTab, label: `Ripley (${ripleyShipping})` },
           { key: "falabella" as MarketTab, label: `Falabella (${falabellaPending})` },
-          { key: "shopify" as MarketTab, label: `Shopify (${shopifyCount})` },
+          { key: "shopify" as MarketTab, label: `Shopify (${shopifyPending})` },
         ]).map((t) => (
           <button
             key={t.key}
