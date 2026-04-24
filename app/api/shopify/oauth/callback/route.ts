@@ -69,8 +69,11 @@ export async function GET(req: NextRequest) {
       queryLen: stateQuery.length,
     });
   }
+  // Nota: no bloqueamos si shopCookie != shop. Shopify permite al usuario
+  // cambiar de tienda en la pantalla "Choose store" del authorize, y el HMAC
+  // ya garantiza que Shopify firmó este callback. Solo lo registramos.
   if (shopCookie && shopCookie !== shop) {
-    return fail(req, "shop_mismatch", { shopCookie, shop });
+    console.warn("[shopify-oauth] shop changed during install:", { shopCookie, shop });
   }
 
   // 3. Intercambiar code por access_token
