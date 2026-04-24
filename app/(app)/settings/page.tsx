@@ -65,10 +65,9 @@ const platforms: PlatformConfig[] = [
   {
     platform: "shopify",
     label: "Shopify",
-    description: "Solo lectura de pedidos. Crea una Custom App en Shopify Admin → Apps → Develop apps, con scopes read_orders y read_products.",
+    description: "Solo lectura de pedidos. Usa OAuth — ingresa el Shop Domain y presiona 'Conectar con Shopify'. Scopes: read_orders, read_products.",
     fields: [
       { key: "shopDomain", label: "Shop Domain", placeholder: "mi-tienda.myshopify.com" },
-      { key: "accessToken", label: "Admin API Access Token", placeholder: "shpat_xxxxxxxxxxxxxxxxxxxxxxxx", type: "password" },
       { key: "apiVersion", label: "API Version (opcional)", placeholder: "2024-10" },
     ],
   },
@@ -94,6 +93,9 @@ export default function SettingsPage() {
   const [offices, setOffices] = useState<Office[]>([]);
   const [loadingOffices, setLoadingOffices] = useState(false);
 
+  // Shopify OAuth connection banner (from ?shopify=connected|error)
+  const [shopifyBanner, setShopifyBanner] = useState<{ ok: boolean; message: string } | null>(null);
+
   // Admin-only state
   const [users, setUsers] = useState<AppUser[]>([]);
   const [newUser, setNewUser] = useState({ username: "", pin: "", role: "vendedor" as "admin" | "vendedor" });
@@ -112,6 +114,38 @@ export default function SettingsPage() {
       setActiveStatus(status);
     });
     fetch("/api/login-settings").then((r) => r.json()).then(setLoginSettings);
+
+    // Handle Shopify OAuth return params: ?shopify=connected|error&reason=...&shop=...
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const s = params.get("shopify");
+      if (s === "connected") {
+        const shop = params.get("shop") || "";
+        setShopifyBanner({ ok: true, message: `Shopify conectado${shop ? ` — ${shop}` : ""}` });
+      } else if (s === "error") {
+        const reasonMap: Record<string, string> = {
+          env_missing: "Faltan SHOPIFY_CLIENT_ID / SHOPIFY_CLIENT_SECRET",
+          bad_request: "Respuesta inválida de Shopify",
+          bad_shop: "Shop Domain inválido",
+          hmac_invalid: "Firma HMAC inválida — revisa SHOPIFY_CLIENT_SECRET",
+          state_mismatch: "Sesión de OAuth expirada — vuelve a iniciar",
+          shop_mismatch: "Tienda cambió durante el flujo",
+          no_token: "Shopify no devolvió access_token",
+          exchange_failed: "Fallo al intercambiar el code por token",
+          persist_failed: "No se pudo guardar la credencial",
+        };
+        const reason = params.get("reason") || "";
+        setShopifyBanner({ ok: false, message: reasonMap[reason] || `Error: ${reason || "desconocido"}` });
+      }
+      if (s) {
+        // Limpiar la URL para que el banner no persista en refresh.
+        const clean = new URL(window.location.href);
+        clean.searchParams.delete("shopify");
+        clean.searchParams.delete("reason");
+        clean.searchParams.delete("shop");
+        window.history.replaceState({}, "", clean.toString());
+      }
+    }
   }, []);
 
   const isAdmin = me?.role === "admin";
@@ -162,6 +196,15 @@ export default function SettingsPage() {
       setTimeout(() => setSaved(null), 3000);
     } catch { alert("Error de red al guardar"); }
     finally { setSaving(null); }
+  }
+
+  function connectShopify() {
+    const shop = (formData["shopify"]?.shopDomain || "").trim().toLowerCase();
+    if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(shop)) {
+      alert("Shop Domain inválido. Debe ser <tienda>.myshopify.com");
+      return;
+    }
+    window.location.href = `/api/shopify/oauth/install?shop=${encodeURIComponent(shop)}`;
   }
 
   async function handleTest(platform: string) {
@@ -460,6 +503,18 @@ export default function SettingsPage() {
         <h2 className="text-sm font-bold tracking-[0.2em] mb-6 border-b border-black pb-3">
           |{isAdmin ? "03" : "01"}| Marketplaces
         </h2>
+
+        {shopifyBanner && (
+          <div className="mb-6 p-4 border border-black text-[11px] font-light tracking-wider flex items-start justify-between gap-4">
+            <span>{shopifyBanner.ok ? "✓ " : "✗ "}{shopifyBanner.message}</span>
+            <button
+              onClick={() => setShopifyBanner(null)}
+              className="text-[10px] font-bold tracking-[0.2em] underline underline-offset-4 hover:no-underline shrink-0"
+            >
+              Cerrar
+            </button>
+          </div>
+        )}
         <div className="space-y-6">
           {platforms.map((p) => {
             const test = testStatus[p.platform];
@@ -541,16 +596,26 @@ export default function SettingsPage() {
                   )}
 
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
-                    <button
-                      onClick={() => handleTest(p.platform)}
-                      disabled={test?.loading}
-                      className="text-[11px] font-bold tracking-[0.25em] underline underline-offset-[6px] hover:no-underline disabled:opacity-40 self-start flex items-center gap-2"
-                    >
-                      {test?.loading && (
-                        <span className="w-3 h-3 border border-current border-t-transparent spinner-ring animate-spin inline-block" />
+                    <div className="flex flex-wrap items-center gap-5">
+                      <button
+                        onClick={() => handleTest(p.platform)}
+                        disabled={test?.loading}
+                        className="text-[11px] font-bold tracking-[0.25em] underline underline-offset-[6px] hover:no-underline disabled:opacity-40 flex items-center gap-2"
+                      >
+                        {test?.loading && (
+                          <span className="w-3 h-3 border border-current border-t-transparent spinner-ring animate-spin inline-block" />
+                        )}
+                        {test?.loading ? "Verificando..." : "Verificar Conexión"}
+                      </button>
+                      {p.platform === "shopify" && isAdmin && (
+                        <button
+                          onClick={connectShopify}
+                          className="text-[11px] font-bold tracking-[0.25em] underline underline-offset-[6px] hover:no-underline"
+                        >
+                          {activeStatus["shopify"] ? "Reconectar con Shopify" : "Conectar con Shopify"}
+                        </button>
                       )}
-                      {test?.loading ? "Verificando..." : "Verificar Conexión"}
-                    </button>
+                    </div>
 
                     <div className="flex items-center gap-4">
                       {saved === p.platform && (

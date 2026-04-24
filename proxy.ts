@@ -19,6 +19,7 @@ const PUBLIC_PREFIXES = [
   "/api/webhooks",
   "/api/cron",
   "/api/health",      // Railway healthcheck — must respond 200 sin auth
+  "/api/shopify/oauth/callback", // Shopify redirige acá; validación vía HMAC+state (install sigue gated)
   "/_next",
   "/favicon.ico",
 ];
