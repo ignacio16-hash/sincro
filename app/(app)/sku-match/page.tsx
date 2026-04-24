@@ -63,7 +63,7 @@ export default function SkuMatchPage() {
           disabled={loading}
           className="self-start text-xs font-bold tracking-[0.25em] underline underline-offset-[6px] hover:no-underline disabled:opacity-40 flex items-center gap-2"
         >
-          {loading && <span className="w-3 h-3 border border-current border-t-transparent animate-spin inline-block" />}
+          {loading && <span className="w-3 h-3 border border-current border-t-transparent spinner-ring animate-spin inline-block" />}
           {loading ? "Comparando..." : "Comparar SKUs"}
         </button>
       </div>

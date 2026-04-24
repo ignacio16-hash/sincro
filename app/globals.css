@@ -109,6 +109,11 @@ button:disabled { cursor: not-allowed; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .animate-spin { animation: spin 1s linear infinite; }
 
+/* Spinners: único caso donde permitimos esquinas redondeadas. La regla
+   global de "sharp edges only" mata todos los rounded-*, así que los
+   spinners usan esta clase que reestablece el radio con !important. */
+.spinner-ring { border-radius: 50% !important; }
+
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: .5; }

@@ -62,6 +62,16 @@ const platforms: PlatformConfig[] = [
       { key: "baseUrl", label: "Base URL", placeholder: "https://sellercenter.ripleylabs.com" },
     ],
   },
+  {
+    platform: "shopify",
+    label: "Shopify",
+    description: "Solo lectura de pedidos. Crea una Custom App en Shopify Admin → Apps → Develop apps, con scopes read_orders y read_products.",
+    fields: [
+      { key: "shopDomain", label: "Shop Domain", placeholder: "mi-tienda.myshopify.com" },
+      { key: "accessToken", label: "Admin API Access Token", placeholder: "shpat_xxxxxxxxxxxxxxxxxxxxxxxx", type: "password" },
+      { key: "apiVersion", label: "API Version (opcional)", placeholder: "2024-10" },
+    ],
+  },
 ];
 
 const webhookPaths: Record<string, string> = {
@@ -537,7 +547,7 @@ export default function SettingsPage() {
                       className="text-[11px] font-bold tracking-[0.25em] underline underline-offset-[6px] hover:no-underline disabled:opacity-40 self-start flex items-center gap-2"
                     >
                       {test?.loading && (
-                        <span className="w-3 h-3 border border-current border-t-transparent animate-spin inline-block" />
+                        <span className="w-3 h-3 border border-current border-t-transparent spinner-ring animate-spin inline-block" />
                       )}
                       {test?.loading ? "Verificando..." : "Verificar Conexión"}
                     </button>

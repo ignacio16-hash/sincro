@@ -122,7 +122,7 @@ export default function DashboardPage() {
   if (!data) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <div className="w-6 h-6 border-2 border-black border-t-transparent animate-spin" />
+        <div className="w-6 h-6 border-2 border-black border-t-transparent spinner-ring animate-spin" />
       </div>
     );
   }
@@ -143,7 +143,7 @@ export default function DashboardPage() {
           className="self-start text-xs font-bold tracking-[0.25em] underline underline-offset-[6px] hover:no-underline disabled:opacity-40 flex items-center gap-3"
         >
           {syncing && (
-            <span className="w-3 h-3 border border-current border-t-transparent animate-spin inline-block" />
+            <span className="w-3 h-3 border border-current border-t-transparent spinner-ring animate-spin inline-block" />
           )}
           {syncing ? "Sincronizando..." : "Sync Manual"}
         </button>
@@ -167,7 +167,7 @@ export default function DashboardPage() {
               <div key={i} className="flex items-center gap-3 text-xs tracking-wider">
                 <span className="w-4 text-center font-bold">
                   {line.status ? (progressStatusIcon[line.status] || "·") : (
-                    <span className="w-2 h-2 border border-black border-t-transparent animate-spin inline-block" />
+                    <span className="w-2 h-2 border border-black border-t-transparent spinner-ring animate-spin inline-block" />
                   )}
                 </span>
                 <span className={line.status ? "font-light text-neutral-600" : "font-bold"}>
