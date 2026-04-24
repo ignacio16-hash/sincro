@@ -597,16 +597,19 @@ export default function SettingsPage() {
 
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
                     <div className="flex flex-wrap items-center gap-5">
-                      <button
-                        onClick={() => handleTest(p.platform)}
-                        disabled={test?.loading}
-                        className="text-[11px] font-bold tracking-[0.25em] underline underline-offset-[6px] hover:no-underline disabled:opacity-40 flex items-center gap-2"
-                      >
-                        {test?.loading && (
-                          <span className="w-3 h-3 border border-current border-t-transparent spinner-ring animate-spin inline-block" />
-                        )}
-                        {test?.loading ? "Verificando..." : "Verificar Conexión"}
-                      </button>
+                      {/* Shopify: Verificar sólo tiene sentido después del OAuth (antes no hay token). */}
+                      {!(p.platform === "shopify" && !activeStatus["shopify"]) && (
+                        <button
+                          onClick={() => handleTest(p.platform)}
+                          disabled={test?.loading}
+                          className="text-[11px] font-bold tracking-[0.25em] underline underline-offset-[6px] hover:no-underline disabled:opacity-40 flex items-center gap-2"
+                        >
+                          {test?.loading && (
+                            <span className="w-3 h-3 border border-current border-t-transparent spinner-ring animate-spin inline-block" />
+                          )}
+                          {test?.loading ? "Verificando..." : "Verificar Conexión"}
+                        </button>
+                      )}
                       {p.platform === "shopify" && isAdmin && (
                         <button
                           onClick={connectShopify}
