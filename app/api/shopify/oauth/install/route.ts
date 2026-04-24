@@ -30,11 +30,13 @@ export async function GET(req: NextRequest) {
 
   const clientId = process.env.SHOPIFY_CLIENT_ID;
   if (!clientId) {
+    console.error("[shopify-oauth] install: falta SHOPIFY_CLIENT_ID en el entorno");
     return NextResponse.json(
       { error: "Falta SHOPIFY_CLIENT_ID en el entorno" },
       { status: 500 }
     );
   }
+  console.log("[shopify-oauth] install hit, shop=", req.nextUrl.searchParams.get("shop"));
 
   const shopRaw = req.nextUrl.searchParams.get("shop") || "";
   if (!shopDomainIsValid(shopRaw)) {

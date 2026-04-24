@@ -25,7 +25,8 @@ import {
 
 export const dynamic = "force-dynamic";
 
-function fail(req: NextRequest, reason: string): NextResponse {
+function fail(req: NextRequest, reason: string, extra?: Record<string, unknown>): NextResponse {
+  console.error("[shopify-oauth] callback fail:", reason, extra || {});
   const url = new URL("/settings", appUrl(req));
   url.searchParams.set("shopify", "error");
   url.searchParams.set("reason", reason);
@@ -33,10 +34,12 @@ function fail(req: NextRequest, reason: string): NextResponse {
 }
 
 export async function GET(req: NextRequest) {
+  console.log("[shopify-oauth] callback hit:", req.nextUrl.pathname, req.nextUrl.search);
+
   const clientId = process.env.SHOPIFY_CLIENT_ID;
   const clientSecret = process.env.SHOPIFY_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
-    return fail(req, "env_missing");
+    return fail(req, "env_missing", { hasId: !!clientId, hasSecret: !!clientSecret });
   }
 
   const query = req.nextUrl.searchParams;
@@ -44,13 +47,15 @@ export async function GET(req: NextRequest) {
   const stateQuery = query.get("state");
   const shopRaw = query.get("shop") || "";
 
-  if (!code || !stateQuery || !shopRaw) return fail(req, "bad_request");
-  if (!shopDomainIsValid(shopRaw)) return fail(req, "bad_shop");
+  if (!code || !stateQuery || !shopRaw) {
+    return fail(req, "bad_request", { hasCode: !!code, hasState: !!stateQuery, hasShop: !!shopRaw });
+  }
+  if (!shopDomainIsValid(shopRaw)) return fail(req, "bad_shop", { shopRaw });
   const shop = normalizeShopDomain(shopRaw);
 
   // 1. HMAC
   if (!verifyShopifyHmac(query, clientSecret)) {
-    return fail(req, "hmac_invalid");
+    return fail(req, "hmac_invalid", { shop });
   }
 
   // 2. state + shop de la cookie
@@ -58,10 +63,14 @@ export async function GET(req: NextRequest) {
   const cookieVal = store.get(STATE_COOKIE_NAME)?.value || "";
   const [stateCookie, shopCookie] = cookieVal.split("|");
   if (!stateCookie || stateCookie !== stateQuery) {
-    return fail(req, "state_mismatch");
+    return fail(req, "state_mismatch", {
+      hasCookie: !!cookieVal,
+      cookieLen: cookieVal.length,
+      queryLen: stateQuery.length,
+    });
   }
   if (shopCookie && shopCookie !== shop) {
-    return fail(req, "shop_mismatch");
+    return fail(req, "shop_mismatch", { shopCookie, shop });
   }
 
   // 3. Intercambiar code por access_token
@@ -75,9 +84,11 @@ export async function GET(req: NextRequest) {
     );
     accessToken = String(data?.access_token || "");
     scope = typeof data?.scope === "string" ? data.scope : undefined;
-    if (!accessToken) return fail(req, "no_token");
-  } catch {
-    return fail(req, "exchange_failed");
+    if (!accessToken) return fail(req, "no_token", { data });
+  } catch (err) {
+    const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+    const body = axios.isAxiosError(err) ? err.response?.data : undefined;
+    return fail(req, "exchange_failed", { status, body, message: (err as Error).message });
   }
 
   // 4. Persistir credencial — merge con la config previa (preserva apiVersion).
@@ -97,8 +108,9 @@ export async function GET(req: NextRequest) {
       update: { config: newConfig, isActive: true },
       create: { platform: "shopify", config: newConfig, isActive: true },
     });
-  } catch {
-    return fail(req, "persist_failed");
+    console.log("[shopify-oauth] callback OK — credential saved for", shop);
+  } catch (err) {
+    return fail(req, "persist_failed", { message: (err as Error).message });
   }
 
   // 5. Limpiar cookie de state y redirigir al settings.
