@@ -518,19 +518,30 @@ export default function SettingsPage() {
         <div className="space-y-6">
           {platforms.map((p) => {
             const test = testStatus[p.platform];
+            // Shopify: "conectado de verdad" = hay accessToken guardado (viene masked).
+            // activeStatus solo mira si hay algún campo no vacío — insuficiente.
+            const shopifyHasToken = Boolean(formData["shopify"]?.accessToken);
             return (
               <div key={p.platform} className="border border-black">
                 <div className="px-4 lg:px-6 py-4 border-b border-black bg-neutral-50">
                   <div className="flex flex-wrap items-center gap-3">
                     <h3 className="text-sm lg:text-base font-bold tracking-[0.15em]">{p.label}</h3>
-                    <span
-                      data-active={activeStatus[p.platform]}
-                      className={`text-[10px] font-bold tracking-[0.2em] border border-black px-2 py-0.5 ${
-                        activeStatus[p.platform] ? "bg-black text-white" : ""
-                      }`}
-                    >
-                      {activeStatus[p.platform] ? "Conectado" : "Sin configurar"}
-                    </span>
+                    {(() => {
+                      // Para Shopify, "conectado" exige que haya accessToken (post-OAuth).
+                      const isConnected = p.platform === "shopify"
+                        ? shopifyHasToken
+                        : activeStatus[p.platform];
+                      return (
+                        <span
+                          data-active={isConnected}
+                          className={`text-[10px] font-bold tracking-[0.2em] border border-black px-2 py-0.5 ${
+                            isConnected ? "bg-black text-white" : ""
+                          }`}
+                        >
+                          {isConnected ? "Conectado" : "Sin configurar"}
+                        </span>
+                      );
+                    })()}
                   </div>
                   <p className="text-[11px] font-light tracking-wider text-neutral-500 mt-2">{p.description}</p>
                 </div>
@@ -598,7 +609,7 @@ export default function SettingsPage() {
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
                     <div className="flex flex-wrap items-center gap-5">
                       {/* Shopify: Verificar sólo tiene sentido después del OAuth (antes no hay token). */}
-                      {!(p.platform === "shopify" && !activeStatus["shopify"]) && (
+                      {!(p.platform === "shopify" && !shopifyHasToken) && (
                         <button
                           onClick={() => handleTest(p.platform)}
                           disabled={test?.loading}
@@ -615,7 +626,7 @@ export default function SettingsPage() {
                           onClick={connectShopify}
                           className="text-[11px] font-bold tracking-[0.25em] underline underline-offset-[6px] hover:no-underline"
                         >
-                          {activeStatus["shopify"] ? "Reconectar con Shopify" : "Conectar con Shopify"}
+                          {shopifyHasToken ? "Reconectar con Shopify" : "Conectar con Shopify"}
                         </button>
                       )}
                     </div>
