@@ -991,32 +991,17 @@ export default function OrdersPage() {
         </div>
       )}
 
-      {/* Paris — pestaña solo con órdenes pendientes de despacho.
-          Cada "order" de Paris agrupa una o más sub-órdenes; dentro de cada
-          sub-orden mostramos solo los items que todavía no están cerrados
-          (entregado, enviado, cancelado, devuelto). Si toda la orden ya está
-          cerrada, no se muestra en esta pestaña. */}
+      {/* Paris — pestaña con todas las órdenes (más recientes primero).
+          El contador del tab muestra cuántas tienen items pendientes de
+          despacho, pero la lista completa se renderiza siempre. */}
       {data && tab === "paris" && (
         <div className="space-y-4">
-          {(() => {
-            const pendingOrders = data.paris
-              .map((o) => ({
-                ...o,
-                subOrders: o.subOrders
-                  .map((so) => ({ ...so, items: so.items.filter((it) => isParisItemPending(it.status)) }))
-                  .filter((so) => so.items.length > 0),
-              }))
-              .filter((o) => o.subOrders.length > 0);
-
-            if (pendingOrders.length === 0) {
-              return (
-                <div className="text-center py-20 text-neutral-400 font-light text-xs tracking-widest border border-black">
-                  No hay pedidos de Paris pendientes de despacho
-                </div>
-              );
-            }
-
-            return pendingOrders.map((order) => (
+          {data.paris.length === 0 ? (
+            <div className="text-center py-20 text-neutral-400 font-light text-xs tracking-widest border border-black">
+              No hay pedidos de Paris
+            </div>
+          ) : (
+            data.paris.map((order) => (
               <div key={order.orderNumber} className="border border-black overflow-hidden">
                 <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 px-4 lg:px-6 py-4 border-b border-black bg-neutral-50">
                   <div className="flex flex-wrap items-center gap-3">
@@ -1109,8 +1094,8 @@ export default function OrdersPage() {
                   </div>
                 ))}
               </div>
-            ));
-          })()}
+            ))
+          )}
         </div>
       )}
     </div>
