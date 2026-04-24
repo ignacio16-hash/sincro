@@ -84,6 +84,20 @@ model ShippingLabel {
   @@index([platform])
 }
 
+// Marca local de "enviado" para un pedido de un marketplace. Solo existe en
+// nuestra DB — no se empuja al marketplace. Admin y vendedor pueden marcar /
+// desmarcar. Una sola fila por (platform, orderId); toggle = upsert / delete.
+model OrderShipment {
+  id        String   @id @default(cuid())
+  platform  String   // "shopify" (por ahora), extensible
+  orderId   String
+  shippedBy String   // username del que marcó
+  shippedAt DateTime @default(now())
+
+  @@unique([platform, orderId])
+  @@index([platform])
+}
+
 // Singleton row (id="default") with branding for the /login page.
 // logoText replaces the word shown instead of "ZARA" on login.
 // imageUrl points at the right-hand model photo on login.

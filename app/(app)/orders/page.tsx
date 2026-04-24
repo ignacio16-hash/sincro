@@ -59,6 +59,9 @@ interface ShopifyOrder {
   createdAt: string;
   items: ShopifyItem[];
   hasLabel: boolean;
+  isShipped: boolean;
+  shippedAt: string | null;
+  shippedBy: string | null;
 }
 
 interface OrdersData {
@@ -404,6 +407,90 @@ function ShopifyLabelActions({
   );
 }
 
+// Toggle de "enviado" local (no se empuja a Shopify). Admin y vendedor pueden
+// marcar / desmarcar. Cuando está marcado, se muestra chip + metadata; cuando
+// no, un botón para marcar.
+function ShopifyShippedToggle({
+  orderId,
+  isShipped,
+  shippedAt,
+  shippedBy,
+  onChange,
+}: {
+  orderId: string;
+  isShipped: boolean;
+  shippedAt: string | null;
+  shippedBy: string | null;
+  onChange: (next: { isShipped: boolean; shippedAt: string | null; shippedBy: string | null }) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function toggle(next: boolean) {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/orders/shipped/shopify?orderId=${encodeURIComponent(orderId)}`,
+        { method: next ? "POST" : "DELETE" }
+      );
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(j.error || "Error");
+        return;
+      }
+      onChange({
+        isShipped: !!j.isShipped,
+        shippedAt: j.shippedAt ?? null,
+        shippedBy: j.shippedBy ?? null,
+      });
+    } catch {
+      setError("Error de red");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (isShipped) {
+    return (
+      <div className="flex flex-col items-start gap-1">
+        <div className="flex items-center gap-2">
+          <span className="inline-block text-[10px] font-bold tracking-[0.2em] bg-black text-white px-2 py-0.5">
+            Enviado
+          </span>
+          <button
+            onClick={() => toggle(false)}
+            disabled={busy}
+            className="text-[10px] font-light tracking-[0.2em] text-neutral-500 hover:text-black underline underline-offset-[3px] disabled:opacity-40"
+          >
+            Deshacer
+          </button>
+        </div>
+        {(shippedBy || shippedAt) && (
+          <p className="text-[10px] font-light tracking-widest text-neutral-400">
+            {shippedBy ? `por ${shippedBy}` : ""}{shippedBy && shippedAt ? " · " : ""}{shippedAt ? formatDate(shippedAt) : ""}
+          </p>
+        )}
+        {error && <p className="text-[10px] font-light text-red-700 tracking-wider">{error}</p>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <button
+        onClick={() => toggle(true)}
+        disabled={busy}
+        className="text-[10px] font-bold tracking-[0.2em] px-3 py-2 border border-black hover:bg-black hover:text-white disabled:opacity-40 flex items-center gap-2"
+      >
+        {busy && <span className="w-2 h-2 border border-current border-t-transparent spinner-ring animate-spin inline-block" />}
+        Marcar enviado
+      </button>
+      {error && <p className="text-[10px] font-light text-red-700 tracking-wider">{error}</p>}
+    </div>
+  );
+}
+
 type MarketTab = "ripley" | "falabella" | "shopify";
 
 export default function OrdersPage() {
@@ -500,6 +587,17 @@ export default function OrdersPage() {
     setData((prev) => {
       if (!prev) return prev;
       const nextShopify = prev.shopify.map((o) => o.orderId === orderId ? { ...o, hasLabel } : o);
+      const keys = cacheKeys(username);
+      writeCache(keys.shopify, nextShopify);
+      return { ...prev, shopify: nextShopify };
+    });
+  }, [username]);
+
+  // Toggle del flag local "enviado". Persiste en caché igual que hasLabel.
+  const setShopifyShipped = useCallback((orderId: string, next: { isShipped: boolean; shippedAt: string | null; shippedBy: string | null }) => {
+    setData((prev) => {
+      if (!prev) return prev;
+      const nextShopify = prev.shopify.map((o) => o.orderId === orderId ? { ...o, ...next } : o);
       const keys = cacheKeys(username);
       writeCache(keys.shopify, nextShopify);
       return { ...prev, shopify: nextShopify };
@@ -750,12 +848,21 @@ export default function OrdersPage() {
                   </div>
                   <span className="text-[10px] font-light tracking-widest text-neutral-400">{formatDate(order.createdAt)}</span>
                 </div>
-                <ShopifyLabelActions
-                  orderId={order.orderId}
-                  hasLabel={order.hasLabel}
-                  role={role}
-                  onChange={(next) => setShopifyLabelFlag(order.orderId, next)}
-                />
+                <div className="flex flex-col sm:flex-row sm:items-start gap-4">
+                  <ShopifyShippedToggle
+                    orderId={order.orderId}
+                    isShipped={order.isShipped}
+                    shippedAt={order.shippedAt}
+                    shippedBy={order.shippedBy}
+                    onChange={(next) => setShopifyShipped(order.orderId, next)}
+                  />
+                  <ShopifyLabelActions
+                    orderId={order.orderId}
+                    hasLabel={order.hasLabel}
+                    role={role}
+                    onChange={(next) => setShopifyLabelFlag(order.orderId, next)}
+                  />
+                </div>
               </div>
 
               <div className="divide-y divide-neutral-200">

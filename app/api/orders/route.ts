@@ -36,26 +36,45 @@ export async function GET() {
         : Promise.resolve([] as ShopifyOrder[]),
     ]);
 
-    // Anotar los pedidos de Shopify con hasLabel (si ya subieron etiqueta).
-    // Una sola query al DB con los orderIds actuales.
+    // Anotar pedidos de Shopify con:
+    //   · hasLabel    → ya subieron etiqueta PDF
+    //   · isShipped   → marcado local como enviado
+    //   · shippedAt/By → metadatos del envío (si aplica)
+    // Dos queries paralelas al DB con los orderIds actuales.
     const shopifyOrderIds = shopifyOrders.map((o) => o.orderId);
     let labelsByOrder = new Set<string>();
+    let shipmentsByOrder = new Map<string, { shippedAt: Date; shippedBy: string }>();
     if (shopifyOrderIds.length > 0) {
-      const existing = await prisma.shippingLabel.findMany({
-        where: { platform: "shopify", orderId: { in: shopifyOrderIds } },
-        select: { orderId: true },
-      });
-      labelsByOrder = new Set(existing.map((l) => l.orderId));
+      const [labels, shipments] = await Promise.all([
+        prisma.shippingLabel.findMany({
+          where: { platform: "shopify", orderId: { in: shopifyOrderIds } },
+          select: { orderId: true },
+        }),
+        prisma.orderShipment.findMany({
+          where: { platform: "shopify", orderId: { in: shopifyOrderIds } },
+          select: { orderId: true, shippedAt: true, shippedBy: true },
+        }),
+      ]);
+      labelsByOrder = new Set(labels.map((l) => l.orderId));
+      shipmentsByOrder = new Map(
+        shipments.map((s) => [s.orderId, { shippedAt: s.shippedAt, shippedBy: s.shippedBy }])
+      );
     }
-    const shopifyWithLabels = shopifyOrders.map((o) => ({
-      ...o,
-      hasLabel: labelsByOrder.has(o.orderId),
-    }));
+    const shopifyWithMeta = shopifyOrders.map((o) => {
+      const ship = shipmentsByOrder.get(o.orderId);
+      return {
+        ...o,
+        hasLabel: labelsByOrder.has(o.orderId),
+        isShipped: !!ship,
+        shippedAt: ship?.shippedAt?.toISOString() ?? null,
+        shippedBy: ship?.shippedBy ?? null,
+      };
+    });
 
     return NextResponse.json({
       falabella: falabellaOrders,
       ripley: ripleyOrders,
-      shopify: shopifyWithLabels,
+      shopify: shopifyWithMeta,
     });
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 });
