@@ -2,17 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getRipleySvcLabel } from "@/lib/ripley-svc";
 import { getFalabellaShippingLabel } from "@/lib/falabella";
+import { getParisShippingLabel } from "@/lib/paris";
 
 export const dynamic = "force-dynamic";
 
 // GET /api/orders/label?platform=ripley&orderId=X
 // GET /api/orders/label?platform=falabella&orderItemIds=A,B,C
+// GET /api/orders/label?platform=paris&subOrderNumber=X
 // Returns the label as application/pdf
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const platform = searchParams.get("platform");
   const orderId = searchParams.get("orderId") || "";
   const orderItemIds = searchParams.get("orderItemIds") || "";
+  const subOrderNumber = searchParams.get("subOrderNumber") || "";
 
   try {
     if (platform === "ripley") {
@@ -68,7 +71,23 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    return NextResponse.json({ error: "platform inválido (falabella|ripley)" }, { status: 400 });
+    if (platform === "paris") {
+      if (!subOrderNumber) return NextResponse.json({ error: "subOrderNumber requerido" }, { status: 400 });
+      const parisCred = await prisma.apiCredential.findUnique({ where: { platform: "paris" } });
+      const conf = parisCred?.config as Record<string, string> | undefined;
+      if (!conf?.apiKey || !conf?.baseUrl)
+        return NextResponse.json({ error: "Paris no configurado" }, { status: 400 });
+
+      const { buffer, contentType } = await getParisShippingLabel(conf.apiKey, conf.baseUrl, subOrderNumber);
+      return new Response(buffer.buffer as ArrayBuffer, {
+        headers: {
+          "Content-Type": contentType.includes("pdf") ? "application/pdf" : contentType,
+          "Content-Disposition": `attachment; filename="etiqueta-paris-${subOrderNumber}.pdf"`,
+        },
+      });
+    }
+
+    return NextResponse.json({ error: "platform inválido (falabella|ripley|paris)" }, { status: 400 });
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 });
   }

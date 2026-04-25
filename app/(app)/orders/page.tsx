@@ -256,10 +256,14 @@ function DownloadLabelButton({
   platform,
   orderId,
   orderItemIds,
+  subOrderNumber,
+  label = "Ticket de envío",
 }: {
-  platform: "falabella" | "ripley";
+  platform: "falabella" | "ripley" | "paris";
   orderId?: string;
   orderItemIds?: string;
+  subOrderNumber?: string;
+  label?: string;
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -271,6 +275,7 @@ function DownloadLabelButton({
       const params = new URLSearchParams({ platform });
       if (orderId) params.set("orderId", orderId);
       if (orderItemIds) params.set("orderItemIds", orderItemIds);
+      if (subOrderNumber) params.set("subOrderNumber", subOrderNumber);
       const res = await fetch(`/api/orders/label?${params}`);
       if (!res.ok) {
         const j = await res.json();
@@ -281,7 +286,7 @@ function DownloadLabelButton({
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `etiqueta-${orderId || "falabella"}.pdf`;
+      a.download = `etiqueta-${platform}-${subOrderNumber || orderId || ""}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
     } catch {
@@ -299,7 +304,7 @@ function DownloadLabelButton({
         className="text-[10px] font-bold tracking-[0.2em] px-3 py-2 border border-black hover:bg-black hover:text-white disabled:opacity-40 flex items-center gap-2"
       >
         {loading && <span className="w-2 h-2 border border-current border-t-transparent spinner-ring animate-spin inline-block" />}
-        Etiqueta PDF
+        {label}
       </button>
       {error && <p className="text-[10px] font-light text-red-700 tracking-wider">{error}</p>}
     </div>
@@ -1018,24 +1023,27 @@ export default function OrdersPage() {
 
                 {order.subOrders.map((so) => (
                   <div key={so.subOrderNumber} className="border-t border-neutral-200 first:border-t-0">
-                    <div className="flex flex-wrap items-center gap-3 px-4 lg:px-6 py-2 bg-neutral-50 border-b border-neutral-200">
-                      <span className="text-[10px] font-light tracking-[0.25em] text-neutral-500">Sub-orden</span>
-                      <span className="font-mono text-xs font-bold">{so.subOrderNumber}</span>
-                      {so.status && (
-                        <span className="text-[10px] font-bold tracking-[0.2em] px-2 py-0.5 border border-black uppercase">
-                          {so.status}
-                        </span>
-                      )}
-                      {so.carrier && (
-                        <span className="text-[10px] font-light tracking-widest text-neutral-500">
-                          {so.carrier}{so.trackingNumber ? ` · ${so.trackingNumber}` : ""}
-                        </span>
-                      )}
-                      {so.dispatchDate && (
-                        <span className="text-[10px] font-light tracking-widest text-neutral-400">
-                          Despacho: {formatDate(so.dispatchDate)}
-                        </span>
-                      )}
+                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 px-4 lg:px-6 py-2 bg-neutral-50 border-b border-neutral-200">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <span className="text-[10px] font-light tracking-[0.25em] text-neutral-500">Sub-orden</span>
+                        <span className="font-mono text-xs font-bold">{so.subOrderNumber}</span>
+                        {so.status && (
+                          <span className="text-[10px] font-bold tracking-[0.2em] px-2 py-0.5 border border-black uppercase">
+                            {so.status}
+                          </span>
+                        )}
+                        {so.carrier && (
+                          <span className="text-[10px] font-light tracking-widest text-neutral-500">
+                            {so.carrier}{so.trackingNumber ? ` · ${so.trackingNumber}` : ""}
+                          </span>
+                        )}
+                        {so.dispatchDate && (
+                          <span className="text-[10px] font-light tracking-widest text-neutral-400">
+                            Despacho: {formatDate(so.dispatchDate)}
+                          </span>
+                        )}
+                      </div>
+                      <DownloadLabelButton platform="paris" subOrderNumber={so.subOrderNumber} />
                     </div>
 
                     <div className="divide-y divide-neutral-200">

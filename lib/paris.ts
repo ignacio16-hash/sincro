@@ -13,10 +13,12 @@ import axios from "axios";
 //   · GET  /v2/stock              → lee stock (paginado, para match de catálogo)
 //   · GET  /v1/orders             → lista órdenes con items + sub-órdenes
 
-// Staging default. En producción el usuario debe ingresar la URL provista por
-// Cencosud en Settings (típicamente sin "-stg"). No hardcodeamos prod acá
-// porque el portal público solo documenta stg y no queremos inventar URLs.
-export const PARIS_DEFAULT_BASE_URL = "https://api-developers.ecomm-stg.cencosud.com";
+// URLs confirmadas en los x-codeSamples (cURL/Python/PHP/Java) del OpenAPI
+// público de Cencosud. `servers` del spec apunta a stg, pero las muestras de
+// código de cada endpoint usan la URL productiva.
+export const PARIS_PROD_BASE_URL = "https://api-developers.ecomm.cencosud.com";
+export const PARIS_STG_BASE_URL = "https://api-developers.ecomm-stg.cencosud.com";
+export const PARIS_DEFAULT_BASE_URL = PARIS_PROD_BASE_URL;
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
@@ -281,6 +283,57 @@ export async function getPendingParisOrders(
     }
   }
   return [...agg.values()];
+}
+
+// ─── Etiqueta de envío ───────────────────────────────────────────────────────
+// Flujo confirmado en el OpenAPI:
+//   1. GET /v2/shipments/{subOrderNumber} → array de ShipmentDetailResponseDto
+//      con `labelUrl` (URL pública del PDF en GCS) y/o `labelId`.
+//   2. Descargamos el PDF de esa URL y lo retornamos como buffer.
+//
+// Si `labelUrl` no viene pero sí `labelId`, caemos al endpoint
+// GET /v1/sub-orders/{labelId}/print-label que retorna el mismo objeto con URL.
+export async function getParisShippingLabel(
+  apiKey: string,
+  baseUrl: string,
+  subOrderNumber: string
+): Promise<{ buffer: Buffer; contentType: string }> {
+  const client = await authedClient(apiKey, baseUrl);
+
+  // 1. Pedimos el detalle de envío de la sub-orden.
+  const { data: shipments } = await client.get(
+    `/v2/shipments/${encodeURIComponent(subOrderNumber)}`
+  );
+  const list = Array.isArray(shipments) ? shipments : [];
+  let url = "";
+  let labelId = "";
+  for (const sh of list as Record<string, unknown>[]) {
+    const u = String(sh.labelUrl ?? "");
+    const lid = String(sh.labelId ?? "");
+    if (u) { url = u; break; }
+    if (!labelId && lid) labelId = lid;
+  }
+
+  // 2. Fallback: si no hay labelUrl directo, usar /v1/sub-orders/{labelId}/print-label.
+  if (!url && labelId) {
+    const { data } = await client.get(
+      `/v1/sub-orders/${encodeURIComponent(labelId)}/print-label`
+    );
+    const arr = Array.isArray(data?.data) ? data.data : [];
+    for (const it of arr as Record<string, unknown>[]) {
+      const u = String(it.url ?? it.labels ?? "");
+      if (u) { url = u; break; }
+    }
+  }
+
+  if (!url) {
+    throw new Error("Paris no devolvió URL de etiqueta para esta sub-orden");
+  }
+
+  // 3. Descargar el PDF. Las URLs son de Google Cloud Storage / Envíame, públicas.
+  const pdfRes = await axios.get<ArrayBuffer>(url, { responseType: "arraybuffer" });
+  const ct = String(pdfRes.headers["content-type"] || "application/pdf");
+  return { buffer: Buffer.from(pdfRes.data), contentType: ct };
 }
 
 // Ping ligero para el botón "Verificar conexión" — hace login y pide 1 orden.
