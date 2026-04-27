@@ -5,7 +5,8 @@
 //   · /api/auth/*, GET /api/login-settings       → always accessible
 //   · /api/webhooks/*, /api/cron/*               → always accessible (external)
 //   · everything else                            → requires valid session cookie
-//   · /orders                                    → both roles (única página vendedor)
+//   · /orders                                    → both roles (página vendedor)
+//   · /guia                                      → vendedor only (admin no la necesita)
 //   · everything else inside the app             → admin only
 //
 // Role check inside /api routes is enforced again in the route handlers — this
@@ -25,9 +26,10 @@ const PUBLIC_PREFIXES = [
 ];
 
 // Paths vendedor role can access (prefix-match).
-// Vendedor SOLO puede ver /orders. Cualquier otra cosa lo manda a /orders.
+// Vendedor solo puede ver /orders y /guia. Cualquier otra cosa lo manda a /orders.
 const VENDEDOR_ALLOWED_PREFIXES = [
   "/orders",
+  "/guia",
   "/api/orders",
   "/api/ripley",           // proxy de imágenes Ripley (usado en /orders)
   "/api/auth",

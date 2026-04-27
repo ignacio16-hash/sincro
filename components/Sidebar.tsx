@@ -13,6 +13,7 @@ const NAV = [
   { href: "/dashboard",  label: "Dashboard",     roles: ["admin"] as Role[] },
   { href: "/stock",      label: "Stock",         roles: ["admin"] as Role[] },
   { href: "/orders",     label: "Pedidos",       roles: ["admin", "vendedor"] as Role[] },
+  { href: "/guia",       label: "Guía",          roles: ["vendedor"] as Role[] },
   { href: "/sku-match",  label: "Match SKUs",    roles: ["admin"] as Role[] },
   { href: "/logs",       label: "Logs",          roles: ["admin"] as Role[] },
   { href: "/settings",   label: "Configuración", roles: ["admin"] as Role[] },
