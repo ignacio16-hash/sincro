@@ -12,8 +12,8 @@ const num = (i: number) => String(i + 1).padStart(2, "0");
 // del OpenAPI de Cencosud para Paris. Si cambian allá, actualizar acá.
 
 const FALABELLA_GLOSARIO: { code: string; es: string; desc: string }[] = [
-  { code: "pending", es: "Pendiente", desc: "El pedido entró pero todavía no se prepara. Hay que descargar el ticket y dejarlo listo para despachar." },
-  { code: "ready_to_ship", es: "Listo para envío", desc: "Falabella confirmó que el paquete está listo. La transportista pasa a buscarlo." },
+  { code: "pending", es: "Pendiente", desc: "El pedido entró pero todavía no se prepara. Hay que descargar el ticket, preparar el pedido y enviarlo." },
+  { code: "ready_to_ship", es: "Listo para envío", desc: "Falabella confirmó que el paquete está listo. La transportista pasa a buscarlo. (No es nuestro caso)." },
   { code: "shipped", es: "Enviado", desc: "La transportista ya retiró el paquete y va en camino al cliente." },
   { code: "delivered", es: "Entregado", desc: "El cliente recibió el paquete. No hay nada más que hacer." },
   { code: "canceled", es: "Cancelado", desc: "El pedido fue cancelado (por el cliente, por Falabella o por nosotros). No despachar." },
@@ -193,9 +193,9 @@ export default function GuiaPage() {
       <div className="mb-10 lg:mb-14 border border-black p-6">
         <p className="text-xs font-light tracking-wider leading-relaxed text-neutral-700">
           La página <strong className="font-bold">Pedidos</strong> es donde vas a ver todas las
-          ventas que llegan desde Falabella, Ripley, Shopify y Paris. Desde ahí descargás el
+          ventas que llegan desde Falabella, Ripley, Shopify y Paris. Desde ahí descargarás el
           <strong className="font-bold"> ticket de envío</strong> de cada pedido y, en el caso
-          de Shopify, marcás el pedido como <strong className="font-bold">enviado</strong> cuando lo despachás.
+          de Shopify, marcarás el pedido como <strong className="font-bold">enviado</strong> cuando lo despachás.
         </p>
       </div>
 
@@ -203,14 +203,14 @@ export default function GuiaPage() {
       <Section
         index={0}
         title="Tu día a día"
-        subtitle="La página NO se actualiza sola. Vos tenés que apretar Actualizar."
+        subtitle="La página NO se actualiza sola. Tienes que apretar Actualizar."
       >
         <div className="mb-5 border border-black p-5 bg-neutral-50">
           <p className="text-[11px] font-bold tracking-[0.25em] uppercase mb-2">Importante</p>
           <p className="text-xs font-light tracking-wider leading-relaxed text-neutral-700">
-            Apretá <strong className="font-bold">Actualizar</strong> (arriba a la derecha)
-            cada <strong className="font-bold">1 hora</strong>, desde que abrís la app
-            por la mañana hasta las <strong className="font-bold">13:30</strong>. Si no apretás Actualizar,
+            Clic en <strong className="font-bold">Actualizar</strong> (arriba a la derecha)
+            cada <strong className="font-bold">1 hora</strong>, desde que abres la app
+            por la mañana hasta las <strong className="font-bold">13:30</strong>. Si no haces clic en Actualizar,
             no aparecen los pedidos nuevos aunque ya hayan entrado.
           </p>
         </div>
@@ -219,12 +219,12 @@ export default function GuiaPage() {
           <StepCard
             n={0}
             title="Abrir la página"
-            body={<>Entrás a <span className="font-mono">Pedidos</span> desde el menú lateral. Lo primero que ves está cargado del caché del día anterior.</>}
+            body={<>Entras a <span className="font-mono">Pedidos</span> desde el menú lateral. Lo primero que ves está cargado del caché del día anterior.</>}
           />
           <StepCard
             n={1}
             title="Apretar Actualizar"
-            body={<>Botón <span className="font-mono">Actualizar</span> arriba a la derecha. Pide los pedidos nuevos a las 4 plataformas.</>}
+            body={<>Botón <span className="font-mono">Actualizar</span> arriba a la derecha. Busca los pedidos nuevos a las 4 plataformas.</>}
           />
           <StepCard
             n={2}
@@ -234,7 +234,7 @@ export default function GuiaPage() {
           <StepCard
             n={3}
             title="Descargar tickets"
-            body={<>Entrás a cada pestaña con número y apretás <strong className="font-bold">Ticket de envío</strong> en cada pedido. Te descarga un PDF.</>}
+            body={<>Entra a cada pestaña con número y aprieta <strong className="font-bold">Ticket de envío</strong> en cada pedido. Te descarga un PDF.</>}
           />
           <StepCard
             n={4}
@@ -244,7 +244,7 @@ export default function GuiaPage() {
           <StepCard
             n={5}
             title="Repetir cada hora"
-            body={<>Volvés a apretar <strong className="font-bold">Actualizar</strong> a la hora siguiente. Repetís hasta las <strong className="font-bold">13:30</strong>.</>}
+            body={<>Vuelve a apretar <strong className="font-bold">Actualizar</strong> a la hora siguiente. Repetís hasta las <strong className="font-bold">13:30</strong>.</>}
           />
         </div>
       </Section>
@@ -341,8 +341,8 @@ export default function GuiaPage() {
             <p className="text-[11px] font-bold tracking-[0.25em] uppercase mb-1">La diferencia</p>
             <p className="text-xs font-light tracking-wider leading-relaxed text-neutral-700">
               Shopify <strong className="font-bold">no genera ticket automático</strong> como Falabella, Ripley
-              o Paris. El <strong className="font-bold">admin</strong> tiene que subir el PDF del ticket. Vos solo
-              lo descargás. Si el admin todavía no lo subió, vas a ver el cartel
+              o Paris. El <strong className="font-bold">admin</strong> tiene que subir el PDF del ticket. Tu solamente
+              lo descargarás. Si el admin todavía no lo subió, vas a ver el cartel
               <em> &quot;Sin etiqueta disponible&quot;</em> en gris.
             </p>
           </div>
@@ -351,7 +351,7 @@ export default function GuiaPage() {
             <p className="text-[11px] font-bold tracking-[0.25em] uppercase mb-1">Cómo descargar el ticket</p>
             <p className="text-xs font-light tracking-wider leading-relaxed text-neutral-700">
               Si el admin ya subió el PDF, vas a ver el botón <strong className="font-bold">Descargar ticket</strong>.
-              Lo apretás y se baja. Si dice <em>&quot;Sin etiqueta disponible&quot;</em>, no hay nada que hacer
+              Lo apietas y se descargar. Si dice <em>&quot;Sin etiqueta disponible&quot;</em>, no hay nada que hacer
               hasta que el admin lo cargue — avisale.
             </p>
           </div>
