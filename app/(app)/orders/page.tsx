@@ -100,13 +100,20 @@ interface ParisOrder {
   subOrders: ParisSubOrder[];
 }
 
-// Mismo criterio que lib/paris.ts#isParisItemPending — duplicado porque el UI
-// no puede importar código server-side libremente. Tolerar variantes tanto en
-// EN como ES para no contar de menos si Paris cambia la descripción del estado.
-const PARIS_CLOSED_STATES = ["delivered", "shipped", "cancelled", "canceled", "returned", "entregado", "enviado", "cancelado"];
+// El badge del tab Paris cuenta órdenes con AL MENOS un item en
+// pending/preparing/ready (EN o ES). Cualquier otro estado (enviado, entregado,
+// cancelado, devuelto, o estados desconocidos) NO suma al contador.
+//
+// Distinto del filtro server-side de lib/paris.ts#isParisItemPending, que
+// considera "abierto = no cerrado" para no perder ventas en el discount a Bsale.
+const PARIS_PENDING_KEYWORDS = [
+  "pending", "pendiente",
+  "preparing", "preparando",
+  "ready", "listo",
+];
 function isParisItemPending(statusName: string): boolean {
   const s = (statusName || "").toLowerCase();
-  return !PARIS_CLOSED_STATES.some((k) => s.includes(k));
+  return PARIS_PENDING_KEYWORDS.some((k) => s.includes(k));
 }
 
 interface OrdersData {

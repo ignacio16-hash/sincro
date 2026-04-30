@@ -37,8 +37,8 @@ const RIPLEY_GLOSARIO: { code: string; es: string; desc: string }[] = [
 ];
 
 // Paris devuelve el estado en español/inglés mezclado dependiendo del carrier.
-// Acá agrupamos las palabras clave que la app usa para decidir si un item está
-// "abierto" (cuenta para el badge) o "cerrado".
+// El badge ABIERTO marca los 3 estados que SUMAN al contador del tab
+// (pending/preparing/ready en EN o ES). El resto no suma.
 const PARIS_GLOSARIO: { code: string; es: string; desc: string; abierto: boolean }[] = [
   { code: "pending / pendiente", es: "Pendiente", desc: "Paris recibió el pedido, hay que prepararlo y descargar el ticket.", abierto: true },
   { code: "preparing / preparando", es: "Preparando", desc: "Item en preparación de tu lado.", abierto: true },
@@ -401,8 +401,10 @@ export default function GuiaPage() {
             <p className="text-[11px] font-bold tracking-[0.25em] uppercase mb-1">Contador de la pestaña</p>
             <p className="text-xs font-light tracking-wider leading-relaxed text-neutral-700">
               <span className="font-mono">Paris (N)</span> cuenta los pedidos que tienen <strong className="font-bold">al
-              menos un item abierto</strong> (pendiente / preparando / listo). En cuanto Paris marca todos los
-              items como enviados o entregados, el pedido sale del contador.
+              menos un item</strong> en estado <strong className="font-bold">Pendiente</strong>,
+              <strong className="font-bold"> Preparando</strong> o <strong className="font-bold">Listo</strong>
+              (en EN: <span className="font-mono">pending / preparing / ready</span>). Cuando todos los items
+              pasaron a enviado, entregado, cancelado o devuelto, el pedido sale del contador.
             </p>
           </div>
         </div>
