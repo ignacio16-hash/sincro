@@ -590,10 +590,28 @@ export async function getFalabellaOrdersList(
     // Algunos tenants usan PromisedShippingTimes (plural), aceptamos ambas.
     const pst = order.PromisedShippingTime ?? order.PromisedShippingTimes ?? null;
 
+    // Falabella v2 NO devuelve Status escalar a nivel de orden: viene como
+    // Statuses.Status (string o array de strings, uno por item). Probamos en
+    // este orden:
+    //   1. order.Status / order.OrderStatus  (compatibilidad v1 y otros tenants)
+    //   2. order.Statuses.Status             (v2 documentado)
+    //   3. items[*].status                   (último recurso, ya los tenemos)
+    // Una orden cuenta como "pending" si AL MENOS un item lo está, así el
+    // contador del tab refleja todo lo que falta despachar.
+    const statusesField = (order.Statuses as { Status?: string | string[] } | undefined)?.Status;
+    const statusList: string[] = [];
+    if (order.Status) statusList.push(String(order.Status));
+    if (order.OrderStatus) statusList.push(String(order.OrderStatus));
+    if (Array.isArray(statusesField)) statusList.push(...statusesField.map(String));
+    else if (statusesField) statusList.push(String(statusesField));
+    statusList.push(...items.map((i) => i.status).filter(Boolean));
+    const lower = statusList.map((s) => s.toLowerCase());
+    const status = lower.includes("pending") ? "pending" : (statusList[0] || "unknown");
+
     results.push({
       orderId,
       orderNumber: String(order.OrderNumber || orderId),
-      status: String(order.Status || order.OrderStatus || "unknown"),
+      status,
       createdAt: String(order.CreatedAt || order.CreatedDate || ""),
       promisedShippingTime: pst ? String(pst) : null,
       items,

@@ -657,7 +657,10 @@ export default function OrdersPage() {
   // Conteos por estado clave: pending (Falabella) y SHIPPING (Ripley).
   // Para Shopify contamos solo los pendientes de enviar (no marcados como
   // enviados localmente).
-  const falabellaPending = data?.falabella.filter((o) => o.status === "pending").length ?? 0;
+  // Falabella v2 a veces normaliza el estado a "pending"/"Pending"; case-insensitive
+  // por las dudas. Si la orden no tiene Status escalar, lib/falabella.ts ya lo deriva
+  // de los items (cualquier item "pending" → orden "pending").
+  const falabellaPending = data?.falabella.filter((o) => (o.status || "").toLowerCase() === "pending").length ?? 0;
   const ripleyShipping = data?.ripley.filter((o) => o.orderState === "SHIPPING").length ?? 0;
   const shopifyPending = data?.shopify.filter((o) => !o.isShipped).length ?? 0;
   // Paris: contamos órdenes que tengan AL MENOS un item todavía abierto
