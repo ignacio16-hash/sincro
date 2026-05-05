@@ -145,6 +145,9 @@ export interface RipleyOrder {
   orderState: string;
   createdDate: string;
   currencyCode: string;
+  // Fecha límite de envío calculada por Ripley/Mirakl. Campo `orders.shipping_deadline`
+  // del endpoint GET /api/orders. Devuelto como string. Null si la orden no la trae.
+  shippingDeadline: string | null;
   orderLines: RipleyOrderLine[];
 }
 
@@ -313,11 +316,14 @@ export async function getRipleyOrders(
         imageUrl,
       };
     });
+    // shipping_deadline viene como string (fecha calculada por el sistema).
+    const sd = o.shipping_deadline;
     return {
       orderId: String(o.order_id || ""),
       orderState: String(o.order_state || ""),
       createdDate: String(o.created_date || ""),
       currencyCode: String(o.currency_iso_code || "CLP"),
+      shippingDeadline: sd ? String(sd) : null,
       orderLines: lines,
     };
   });

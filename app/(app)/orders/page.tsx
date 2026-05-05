@@ -40,6 +40,8 @@ interface RipleyOrder {
   orderState: string;
   createdDate: string;
   currencyCode: string;
+  // Campo orders.shipping_deadline del endpoint GET /api/orders de Mirakl.
+  shippingDeadline: string | null;
   orderLines: RipleyLine[];
 }
 
@@ -784,6 +786,16 @@ export default function OrdersPage() {
                   <span className="text-[10px] font-light tracking-widest text-neutral-400">{formatDate(order.createdDate)}</span>
                 </div>
                 <DownloadLabelButton platform="ripley" orderId={order.orderId} />
+              </div>
+
+              {/* shipping_deadline — campo de GET /api/orders (Mirakl OR11). */}
+              <div className="px-4 lg:px-6 py-3 border-b border-neutral-200 bg-white flex flex-wrap items-baseline gap-3">
+                <span className="text-[10px] font-bold tracking-[0.25em] uppercase text-neutral-500">
+                  Fecha máxima de envío
+                </span>
+                <span className="font-mono text-xs font-bold">
+                  {order.shippingDeadline ? formatDate(order.shippingDeadline) : "—"}
+                </span>
               </div>
 
               <div className="divide-y divide-neutral-200">
