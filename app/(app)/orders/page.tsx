@@ -860,6 +860,17 @@ export default function OrdersPage() {
                 />
               </div>
 
+              {/* PromisedShippingTime — campo de GetOrder v2.
+                  https://developers.falabella.com/v500.0.0/reference/getorderv2 */}
+              <div className="px-4 lg:px-6 py-3 border-b border-neutral-200 bg-white flex flex-wrap items-baseline gap-3">
+                <span className="text-[10px] font-bold tracking-[0.25em] uppercase text-neutral-500">
+                  Fecha máxima de envío
+                </span>
+                <span className="font-mono text-xs font-bold">
+                  {order.promisedShippingTime ? formatDate(order.promisedShippingTime) : "—"}
+                </span>
+              </div>
+
               <div className="divide-y divide-neutral-200">
                 {order.items.map((item) => (
                   <div key={item.orderItemId} className="flex flex-col sm:flex-row sm:items-center gap-4 px-4 lg:px-6 py-4">

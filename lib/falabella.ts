@@ -586,9 +586,20 @@ export async function getFalabellaOrdersList(
       items = await getFalabellaOrderItems(apiKey, userId, orderId, country);
     } catch { /* items stay empty if fetch fails */ }
 
-    // PromisedShippingTime — la API la devuelve en GetOrders (ver docs v500.0.0).
-    // Algunos tenants usan PromisedShippingTimes (plural), aceptamos ambas.
-    const pst = order.PromisedShippingTime ?? order.PromisedShippingTimes ?? null;
+    // PromisedShippingTime — preferimos GetOrder v2 (singular) porque es el
+    // endpoint donde la doc oficial garantiza el campo.
+    //   https://developers.falabella.com/v500.0.0/reference/getorderv2
+    // Si el list (GetOrders v2) ya lo trae, lo usamos como atajo para evitar
+    // un round-trip extra; si no, hacemos GetOrder por orden.
+    let pst: unknown = order.PromisedShippingTime ?? order.PromisedShippingTimes ?? null;
+    if (!pst) {
+      try {
+        const single = await getFalabellaOrder(apiKey, userId, orderId, country);
+        pst = single.promisedShippingTime;
+      } catch (e) {
+        console.warn(`[Falabella] GetOrder ${orderId} falló:`, (e as Error).message);
+      }
+    }
 
     // Falabella v2 NO devuelve Status escalar a nivel de orden: viene como
     // Statuses.Status (string o array de strings, uno por item). Probamos en
@@ -640,6 +651,45 @@ export async function getFalabellaOrdersList(
   // Ensure newest-first sort
   results.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   return results;
+}
+
+// GetOrder v2 (singular) — detalle de UN solo pedido.
+// Doc: https://developers.falabella.com/v500.0.0/reference/getorderv2
+// Lo usamos para leer PromisedShippingTime: GetOrders v2 (plural) NO siempre
+// devuelve ese campo, pero la versión singular sí.
+export async function getFalabellaOrder(
+  apiKey: string,
+  userId: string,
+  orderId: string,
+  country = "CL"
+): Promise<{ promisedShippingTime: string | null }> {
+  const baseUrl = BASE_URLS[country] || BASE_URLS.CL;
+  const extra: Record<string, string> = {
+    Version: "2.0",
+    OrderId: orderId,
+  };
+  const url = buildSignedUrl(baseUrl, "GetOrder", userId, apiKey, extra);
+  const client = getClient(userId);
+  const { data } = await client.get(url);
+
+  const errorCode = data?.Head?.ErrorCode ?? data?.ErrorResponse?.Head?.ErrorCode;
+  if (errorCode) {
+    const msg = data?.Head?.ErrorMessage ?? data?.ErrorResponse?.Head?.ErrorMessage ?? JSON.stringify(data);
+    throw new Error(`Falabella GetOrder v2 error ${errorCode}: ${msg}`);
+  }
+
+  // El cuerpo puede venir como Body.Orders.Order o Body.Order según el tenant.
+  const orderRaw =
+    data?.SuccessResponse?.Body?.Orders?.Order ??
+    data?.SuccessResponse?.Body?.Order ??
+    data?.Body?.Orders?.Order ??
+    data?.Body?.Order ??
+    null;
+  const ord = (Array.isArray(orderRaw) ? orderRaw[0] : orderRaw) as Record<string, unknown> | null;
+  if (!ord) return { promisedShippingTime: null };
+
+  const pst = ord.PromisedShippingTime ?? ord.PromisedShippingTimes ?? null;
+  return { promisedShippingTime: pst ? String(pst) : null };
 }
 
 // GetOrderItems — item details (SKU, name, quantity) for a specific order
