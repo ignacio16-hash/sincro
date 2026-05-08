@@ -108,5 +108,9 @@ model LoginSettings {
   // Sanitized server-side (no <script>, no on* handlers, no javascript: URLs).
   logoSvg   String?
   imageUrl  String   @default("https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=1200&q=80")
+  // Logo de la app post-login (sidebar y mobile bar). Se guarda como data URL
+  // (data:image/png;base64,…  o  data:image/svg+xml;base64,…) para que un
+  // simple <img src> lo renderice sin endpoints extra. Null = usar "Parrot".
+  appLogoDataUrl String?
   updatedAt DateTime @updatedAt
 }

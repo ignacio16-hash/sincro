@@ -99,7 +99,8 @@ export default function SettingsPage() {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [newUser, setNewUser] = useState({ username: "", pin: "", role: "vendedor" as "admin" | "vendedor" });
   const [userError, setUserError] = useState<string | null>(null);
-  const [loginSettings, setLoginSettings] = useState<{ logoText: string; logoSvg: string | null; imageUrl: string }>({ logoText: "PARROT", logoSvg: null, imageUrl: "" });
+  const [loginSettings, setLoginSettings] = useState<{ logoText: string; logoSvg: string | null; imageUrl: string; appLogoDataUrl: string | null }>({ logoText: "PARROT", logoSvg: null, imageUrl: "", appLogoDataUrl: null });
+  const [appLogoError, setAppLogoError] = useState<string | null>(null);
   const [loginSaved, setLoginSaved] = useState(false);
   const [logoSvgError, setLogoSvgError] = useState<string | null>(null);
 
@@ -260,9 +261,51 @@ export default function SettingsPage() {
       setLogoSvgError(json.error || "Error al guardar");
       return;
     }
-    setLoginSettings({ logoText: json.logoText, logoSvg: json.logoSvg ?? null, imageUrl: json.imageUrl });
+    setLoginSettings({
+      logoText: json.logoText,
+      logoSvg: json.logoSvg ?? null,
+      imageUrl: json.imageUrl,
+      appLogoDataUrl: json.appLogoDataUrl ?? null,
+    });
     setLoginSaved(true);
     setTimeout(() => setLoginSaved(false), 3000);
+  }
+
+  // Logo de la app post-login. Aceptamos PNG y SVG. Convertimos a data URL en
+  // el cliente y guardamos en loginSettings; el POST envía todo junto.
+  async function handleAppLogoFile(file: File) {
+    setAppLogoError(null);
+    const isPng = file.type === "image/png" || file.name.toLowerCase().endsWith(".png");
+    const isSvg = file.type.includes("svg") || file.name.toLowerCase().endsWith(".svg");
+    if (!isPng && !isSvg) {
+      setAppLogoError("El archivo debe ser .png o .svg");
+      return;
+    }
+    if (file.size > 512 * 1024) {
+      setAppLogoError("El archivo debe pesar menos de 512 KB");
+      return;
+    }
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(reader.error);
+      reader.onload = () => resolve(String(reader.result));
+      reader.readAsDataURL(file);
+    });
+    // Normalizamos el mime: algunos navegadores devuelven image/svg en lugar
+    // de image/svg+xml. Forzamos al formato que valida el server.
+    let normalized = dataUrl;
+    if (isSvg && !/^data:image\/svg\+xml;/.test(dataUrl)) {
+      normalized = dataUrl.replace(/^data:[^;]+;/, "data:image/svg+xml;");
+    }
+    if (isPng && !/^data:image\/png;/.test(dataUrl)) {
+      normalized = dataUrl.replace(/^data:[^;]+;/, "data:image/png;");
+    }
+    setLoginSettings((prev) => ({ ...prev, appLogoDataUrl: normalized }));
+  }
+
+  function clearAppLogo() {
+    setLoginSettings((prev) => ({ ...prev, appLogoDataUrl: null }));
+    setAppLogoError(null);
   }
 
   async function handleSvgFile(file: File) {
@@ -482,6 +525,52 @@ export default function SettingsPage() {
                 </div>
               )}
             </div>
+            <div>
+              <label className="block text-[10px] font-light tracking-[0.25em] text-neutral-500 mb-2">
+                LOGO DE LA APP (DESPUÉS DE INICIAR SESIÓN)
+              </label>
+              <div className="flex flex-wrap items-center gap-4">
+                <label className="text-[11px] font-bold tracking-[0.25em] underline underline-offset-[6px] hover:no-underline cursor-pointer">
+                  {loginSettings.appLogoDataUrl ? "Reemplazar archivo (PNG o SVG)" : "Subir archivo (PNG o SVG)"}
+                  <input
+                    type="file"
+                    accept=".png,.svg,image/png,image/svg+xml"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) void handleAppLogoFile(f);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+                {loginSettings.appLogoDataUrl && (
+                  <button
+                    type="button"
+                    onClick={clearAppLogo}
+                    className="text-[11px] font-bold tracking-[0.25em] underline underline-offset-[6px] hover:no-underline text-neutral-500"
+                  >
+                    Quitar
+                  </button>
+                )}
+              </div>
+              {appLogoError && (
+                <p className="text-[11px] font-light tracking-wider mt-2">{appLogoError}</p>
+              )}
+              {loginSettings.appLogoDataUrl && (
+                <div className="mt-3 border border-neutral-200 p-6 flex items-center justify-center bg-neutral-50">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={loginSettings.appLogoDataUrl}
+                    alt="preview"
+                    className="h-16 w-auto max-w-full object-contain"
+                  />
+                </div>
+              )}
+              <p className="text-[10px] font-light tracking-widest text-neutral-400 mt-2">
+                Reemplaza el texto &quot;Parrot&quot; del sidebar y la barra superior móvil. PNG o SVG, máx. 512 KB.
+              </p>
+            </div>
+
             <div className="flex items-center gap-4 pt-2">
               <button
                 type="submit"

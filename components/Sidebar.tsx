@@ -28,12 +28,22 @@ export default function Sidebar() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [user, setUser] = useState<SessionUser | null>(null);
+  // Logo de la app (PNG/SVG data URL) configurado por admin en /settings.
+  // Si está null, mostramos "Parrot" como fallback.
+  const [appLogo, setAppLogo] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/auth/me")
       .then((r) => r.json())
       .then((d: { user: SessionUser | null }) => setUser(d.user))
       .catch(() => setUser(null));
+  }, [pathname]);
+
+  useEffect(() => {
+    fetch("/api/login-settings")
+      .then((r) => r.json())
+      .then((d: { appLogoDataUrl?: string | null }) => setAppLogo(d.appLogoDataUrl ?? null))
+      .catch(() => setAppLogo(null));
   }, [pathname]);
 
   // Body scroll lock when mobile drawer is open
@@ -57,9 +67,14 @@ export default function Sidebar() {
       <header className="lg:hidden sticky top-0 z-40 flex items-center justify-between border-b border-black bg-white px-4 h-14">
         <Link
           href={user?.role === "vendedor" ? "/orders" : "/dashboard"}
-          className="font-bold text-lg tracking-[0.02em]"
+          className="font-bold text-lg tracking-[0.02em] flex items-center"
         >
-          Parrot
+          {appLogo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={appLogo} alt="logo" className="h-7 w-auto max-w-[140px] object-contain" />
+          ) : (
+            "Parrot"
+          )}
         </Link>
         <div className="flex items-center gap-3">
           {user && (
@@ -89,7 +104,14 @@ export default function Sidebar() {
       {open && (
         <div className="lg:hidden fixed inset-0 z-50 bg-white slide-in flex flex-col">
           <div className="flex items-center justify-between border-b border-black px-4 h-14">
-            <span className="font-bold text-lg tracking-[0.02em]">Parrot</span>
+            <span className="font-bold text-lg tracking-[0.02em] flex items-center">
+              {appLogo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={appLogo} alt="logo" className="h-7 w-auto max-w-[140px] object-contain" />
+              ) : (
+                "Parrot"
+              )}
+            </span>
             <button
               onClick={() => setOpen(false)}
               aria-label="Cerrar"
@@ -145,10 +167,21 @@ export default function Sidebar() {
       <aside className="hidden lg:flex w-60 xl:w-64 shrink-0 min-h-screen bg-white border-r border-black flex-col">
         <div className="px-8 pt-10 pb-8">
           <Link href={user?.role === "vendedor" ? "/orders" : "/dashboard"}>
-            <p className="font-bold text-2xl xl:text-3xl tracking-[0.02em] leading-none">
-              Parrot
-            </p>
-            <div className="mt-2 w-10 h-[1.5px] bg-black" />
+            {appLogo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={appLogo}
+                alt="logo"
+                className="h-12 xl:h-14 w-auto max-w-full object-contain"
+              />
+            ) : (
+              <>
+                <p className="font-bold text-2xl xl:text-3xl tracking-[0.02em] leading-none">
+                  Parrot
+                </p>
+                <div className="mt-2 w-10 h-[1.5px] bg-black" />
+              </>
+            )}
           </Link>
         </div>
 
