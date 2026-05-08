@@ -17,55 +17,84 @@ function getClient(apiKey: string, instanceUrl: string) {
   });
 }
 
-// STO01: Update stock using CSV import (recommended — stock-only, no side effects)
+// STO01: Stock import por CSV.
+// Doc: https://developer.mirakl.com/content/product/mmp/rest/seller/openapi3/offers/sto01
+//
+// Formato exacto exigido por Mirakl:
+//   · Separador: punto y coma (";"). NO coma.
+//   · Headers (en este orden): "offer-sku";"quantity";"warehouse-code";"update-delete"
+//     Los nombres en la doc vienen entre comillas dobles, así que las usamos
+//     también en los datos para evitar parsing ambiguo.
+//   · `update-delete` es obligatorio: "update" para upsert / "delete" para borrar.
+//     Stock-sync siempre usa "update".
+//   · `warehouse-code` vacío → la cantidad aplica como global.
+//   · Field name multipart: "file".
+//   · Respuesta 201 con { import_id }; el procesamiento es asíncrono.
+function buildStockCsv(items: { sku: string; quantity: number }[]): string {
+  const header = `"offer-sku";"quantity";"warehouse-code";"update-delete"`;
+  const rows = items.map((it) => {
+    // Escapamos comillas dentro del SKU por si acaso.
+    const sku = String(it.sku).replace(/"/g, '""');
+    const qty = String(Math.max(0, Math.floor(it.quantity)));
+    return `"${sku}";"${qty}";"";"update"`;
+  });
+  return [header, ...rows].join("\r\n");
+}
+
+async function postStockImport(
+  apiKey: string,
+  instanceUrl: string,
+  csvContent: string
+): Promise<{ importId: string | null }> {
+  const form = new FormData();
+  form.append("file", Buffer.from(csvContent, "utf-8"), {
+    filename: "stock.csv",
+    contentType: "text/csv; charset=utf-8",
+  });
+
+  const client = getClient(apiKey, instanceUrl);
+  const { data } = await client.post("/api/offers/stock/imports", form, {
+    headers: form.getHeaders(),
+  });
+  const importId = data?.import_id ? String(data.import_id) : null;
+  return { importId };
+}
+
+// STO01: actualizar stock de UN SKU.
 export async function updateRipleyStock(
   apiKey: string,
   instanceUrl: string,
   sku: string,
   quantity: number
-): Promise<void> {
-  const csvContent = `offer-sku,quantity,warehouse-code,update-delete\n${sku},${quantity},,`;
-
-  const form = new FormData();
-  form.append("file", Buffer.from(csvContent), {
-    filename: "stock.csv",
-    contentType: "text/csv",
-  });
-
-  const client = getClient(apiKey, instanceUrl);
-  await client.post("/api/offers/stock/imports", form, {
-    headers: form.getHeaders(),
-  });
+): Promise<{ importId: string | null }> {
+  const csv = buildStockCsv([{ sku, quantity }]);
+  return postStockImport(apiKey, instanceUrl, csv);
 }
 
-// STO01: Batch update stock for multiple SKUs
+// STO01: actualizar stock de varios SKUs en un solo import.
 export async function batchUpdateRipleyStock(
   apiKey: string,
   instanceUrl: string,
   items: { sku: string; quantity: number }[]
-): Promise<{ success: string[]; failed: string[] }> {
-  if (items.length === 0) return { success: [], failed: [] };
+): Promise<{ success: string[]; failed: string[]; importId: string | null; error?: string }> {
+  if (items.length === 0) return { success: [], failed: [], importId: null };
 
-  const lines = items
-    .map((item) => `${item.sku},${item.quantity},,`)
-    .join("\n");
-  const csvContent = `offer-sku,quantity,warehouse-code,update-delete\n${lines}`;
-
+  const csv = buildStockCsv(items);
   try {
-    const form = new FormData();
-    form.append("file", Buffer.from(csvContent), {
-      filename: "stock.csv",
-      contentType: "text/csv",
-    });
-
-    const client = getClient(apiKey, instanceUrl);
-    await client.post("/api/offers/stock/imports", form, {
-      headers: form.getHeaders(),
-    });
-
-    return { success: items.map((i) => i.sku), failed: [] };
-  } catch {
-    return { success: [], failed: items.map((i) => i.sku) };
+    const { importId } = await postStockImport(apiKey, instanceUrl, csv);
+    return { success: items.map((i) => i.sku), failed: [], importId };
+  } catch (err) {
+    let msg = (err as Error).message;
+    if (axios.isAxiosError(err)) {
+      const status = err.response?.status;
+      const body = err.response?.data;
+      const apiMsg = typeof body === "string"
+        ? body.slice(0, 300)
+        : JSON.stringify(body || {}).slice(0, 300);
+      msg = `STO01 ${status ?? "?"}: ${apiMsg}`;
+    }
+    console.error("[Ripley] batchUpdateRipleyStock falló:", msg);
+    return { success: [], failed: items.map((i) => i.sku), importId: null, error: msg };
   }
 }
 

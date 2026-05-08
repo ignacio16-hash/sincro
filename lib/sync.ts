@@ -317,9 +317,12 @@ export async function runFullSync(
           ripleyItems
         );
         const st = result.failed.length === 0 ? "success" : "partial";
-        const msg = `${result.success.length} ok, ${result.failed.length} fallaron${failedSummary(result.failed)}`;
+        const errSuffix = result.error ? ` — ${result.error}` : "";
+        const msg = `${result.success.length} ok, ${result.failed.length} fallaron${failedSummary(result.failed)}${errSuffix}`;
         await logSync("full_sync", "ripley", st, msg,
-          result.failed.length > 0 ? { failed: result.failed } : undefined);
+          result.failed.length > 0
+            ? { failed: result.failed, importId: result.importId, error: result.error }
+            : { importId: result.importId });
         onProgress?.({ stage: "ripley", message: `Ripley: ${msg}`, percent: 87, status: result.failed.length === 0 ? "ok" : "partial" });
         if (result.failed.length > 0) errors.push(`Ripley: ${result.failed.length} fallaron`);
 
