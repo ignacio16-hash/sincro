@@ -28,9 +28,11 @@ export default function Sidebar() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [user, setUser] = useState<SessionUser | null>(null);
-  // Logo de la app (PNG/SVG data URL) configurado por admin en /settings.
-  // Si está null, mostramos "Parrot" como fallback.
+  // Logo de la app — mismo asset que se muestra en /login. Cualquiera de los
+  // dos campos vale: data URL (PNG/SVG subido) o el SVG inline legacy.
   const [appLogo, setAppLogo] = useState<string | null>(null);
+  const [logoSvg, setLogoSvg] = useState<string | null>(null);
+  const [logoText, setLogoText] = useState<string>("Parrot");
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -42,8 +44,15 @@ export default function Sidebar() {
   useEffect(() => {
     fetch("/api/login-settings")
       .then((r) => r.json())
-      .then((d: { appLogoDataUrl?: string | null }) => setAppLogo(d.appLogoDataUrl ?? null))
-      .catch(() => setAppLogo(null));
+      .then((d: { appLogoDataUrl?: string | null; logoSvg?: string | null; logoText?: string }) => {
+        setAppLogo(d.appLogoDataUrl ?? null);
+        setLogoSvg(d.logoSvg ?? null);
+        if (d.logoText && d.logoText.trim()) setLogoText(d.logoText);
+      })
+      .catch(() => {
+        setAppLogo(null);
+        setLogoSvg(null);
+      });
   }, [pathname]);
 
   // Body scroll lock when mobile drawer is open
@@ -71,9 +80,15 @@ export default function Sidebar() {
         >
           {appLogo ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={appLogo} alt="logo" className="h-7 w-auto max-w-[140px] object-contain" />
+            <img src={appLogo} alt={logoText} className="h-7 w-auto max-w-[140px] object-contain" />
+          ) : logoSvg ? (
+            <span
+              aria-label={logoText}
+              className="block [&>svg]:h-7 [&>svg]:w-auto [&>svg]:max-w-[140px]"
+              dangerouslySetInnerHTML={{ __html: logoSvg }}
+            />
           ) : (
-            "Parrot"
+            logoText
           )}
         </Link>
         <div className="flex items-center gap-3">
@@ -107,9 +122,15 @@ export default function Sidebar() {
             <span className="font-bold text-lg tracking-[0.02em] flex items-center">
               {appLogo ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={appLogo} alt="logo" className="h-7 w-auto max-w-[140px] object-contain" />
+                <img src={appLogo} alt={logoText} className="h-7 w-auto max-w-[140px] object-contain" />
+              ) : logoSvg ? (
+                <span
+                  aria-label={logoText}
+                  className="block [&>svg]:h-7 [&>svg]:w-auto [&>svg]:max-w-[140px]"
+                  dangerouslySetInnerHTML={{ __html: logoSvg }}
+                />
               ) : (
-                "Parrot"
+                logoText
               )}
             </span>
             <button
@@ -171,13 +192,19 @@ export default function Sidebar() {
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={appLogo}
-                alt="logo"
+                alt={logoText}
                 className="h-12 xl:h-14 w-auto max-w-full object-contain"
+              />
+            ) : logoSvg ? (
+              <span
+                aria-label={logoText}
+                className="block [&>svg]:h-12 [&>svg]:xl:h-14 [&>svg]:w-auto [&>svg]:max-w-full"
+                dangerouslySetInnerHTML={{ __html: logoSvg }}
               />
             ) : (
               <>
                 <p className="font-bold text-2xl xl:text-3xl tracking-[0.02em] leading-none">
-                  Parrot
+                  {logoText}
                 </p>
                 <div className="mt-2 w-10 h-[1.5px] bg-black" />
               </>

@@ -7,6 +7,8 @@ interface Settings {
   logoText: string;
   logoSvg?: string | null;
   imageUrl: string;
+  // PNG/SVG subido en /settings → mismo logo que el sidebar post-login.
+  appLogoDataUrl?: string | null;
 }
 
 function LoginInner() {
@@ -14,7 +16,7 @@ function LoginInner() {
   const qs = useSearchParams();
   const next = qs.get("next") || "";
 
-  const [settings, setSettings] = useState<Settings>({ logoText: "PARROT", logoSvg: null, imageUrl: "" });
+  const [settings, setSettings] = useState<Settings>({ logoText: "PARROT", logoSvg: null, imageUrl: "", appLogoDataUrl: null });
   const [stage, setStage] = useState<"username" | "pin">("username");
   const [username, setUsername] = useState("");
   const [pin, setPin] = useState(["", "", "", ""]);
@@ -90,9 +92,20 @@ function LoginInner() {
     <div className="min-h-screen flex flex-col lg:flex-row bg-white text-black">
       {/* ─── Left: form ─────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col px-6 sm:px-16 lg:px-24 py-10 lg:py-16">
-        {/* Logo */}
+        {/* Logo — mismo asset que el sidebar post-login.
+            Prioridad:
+              1. appLogoDataUrl (PNG/SVG subido en /settings).
+              2. logoSvg inline (legacy).
+              3. logoText.                                                  */}
         <div className="mb-12 lg:mb-20">
-          {settings.logoSvg ? (
+          {settings.appLogoDataUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={settings.appLogoDataUrl}
+              alt={settings.logoText || "PARROT"}
+              className="h-16 lg:h-20 w-auto max-w-full object-contain select-none"
+            />
+          ) : settings.logoSvg ? (
             <div
               className="select-none [&>svg]:h-16 [&>svg]:lg:h-20 [&>svg]:w-auto [&>svg]:max-w-full"
               aria-label={settings.logoText || "PARROT"}
