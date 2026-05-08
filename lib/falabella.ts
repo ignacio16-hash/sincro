@@ -57,11 +57,40 @@ function buildSignedUrl(
 // GET client: no Content-Type (matches test-connection behaviour).
 // Sending Content-Type: application/x-www-form-urlencoded on a GET request
 // can cause Falabella's server to compute a different signature → E007.
-function getClient(userId: string) {
+//
+// Timeout default 20s para llamadas chicas (GetOrder, UpdateStock chico).
+// Para catálogo (GetProducts/GetStock paginado con 1000 SKUs por página), 20s
+// se queda corto: pasamos `timeoutMs` para subir a 120s en esos casos.
+function getClient(userId: string, timeoutMs = 20000) {
   return axios.create({
     headers: { "User-Agent": `SincroStock/${userId.trim()}/Node.js/1.0` },
-    timeout: 20000,
+    timeout: timeoutMs,
   });
+}
+
+// Helper: ejecuta un GET tolerando timeouts/ECONNRESET con 1 reintento.
+async function getWithRetry<T = unknown>(
+  client: ReturnType<typeof axios.create>,
+  url: string,
+  attempts = 2
+): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const { data } = await client.get<T>(url);
+      return data;
+    } catch (e) {
+      lastErr = e;
+      if (!axios.isAxiosError(e)) break;
+      const code = e.code;
+      const transient =
+        code === "ECONNABORTED" || code === "ETIMEDOUT" ||
+        code === "ECONNRESET" || code === "EAI_AGAIN";
+      if (!transient) break;
+      if (i < attempts - 1) await new Promise((r) => setTimeout(r, 1500 * (i + 1)));
+    }
+  }
+  throw lastErr;
 }
 
 // ─── Stock ───────────────────────────────────────────────────────────────────
@@ -242,12 +271,13 @@ async function getFalabellaSkusViaFetchStock(
   country: string
 ): Promise<{ sku: string; name: string; quantity: number }[]> {
   const baseUrl = BASE_URLS[country] || BASE_URLS.CL;
-  const client = getClient(userId);
+  // FetchStock devuelve TODO en una sola llamada → puede tardar bastante.
+  const client = getClient(userId, 120000);
 
   // FetchStock: ONLY base params (Action, UserID, Version, Timestamp, Format) + Signature.
   // Any extra param (Limit, Offset, Filter) causes E009/signature issues in this endpoint.
   const url = buildSignedUrl(baseUrl, "FetchStock", userId, apiKey);
-  const { data } = await client.get(url);
+  const data: any = await getWithRetry(client, url); // eslint-disable-line @typescript-eslint/no-explicit-any
 
   const errorCode = data?.Head?.ErrorCode ?? data?.ErrorResponse?.Head?.ErrorCode;
   if (errorCode) {
@@ -296,12 +326,14 @@ async function getFalabellaProductsListOnly(
   let offset = 0;
   const limit = 1000; // máximo oficial por respuesta
 
+  // GetProducts paginado puede tardar bastante con 1000 SKUs por página.
+  // Usamos 120s + 1 reintento para sobrevivir picos de latencia de Falabella.
+  const client = getClient(userId, 120000);
   while (true) {
     const extra: Record<string, string> = { Filter: "all", Limit: String(limit) };
     if (offset > 0) extra.Offset = String(offset);
     const url = buildSignedUrl(baseUrl, "GetProducts", userId, apiKey, extra);
-    const client = getClient(userId);
-    const { data } = await client.get(url);
+    const data: any = await getWithRetry(client, url); // eslint-disable-line @typescript-eslint/no-explicit-any
 
     const errorCode = data?.Head?.ErrorCode ?? data?.ErrorResponse?.Head?.ErrorCode;
     if (errorCode) {
@@ -339,7 +371,8 @@ export async function getAllFalabellaStock(
   country = "CL"
 ): Promise<Map<string, number>> {
   const baseUrl = BASE_URLS[country] || BASE_URLS.CL;
-  const client = getClient(userId);
+  // GetStock con Limit=1000 puede demorar; mismo tratamiento que GetProducts.
+  const client = getClient(userId, 120000);
   const agg = new Map<string, number>();
   const LIMIT = 1000;
   let offset = 0;
@@ -348,7 +381,7 @@ export async function getAllFalabellaStock(
     const extra: Record<string, string> = { Limit: String(LIMIT) };
     if (offset > 0) extra.Offset = String(offset);
     const url = buildSignedUrl(baseUrl, "GetStock", userId, apiKey, extra);
-    const { data } = await client.get(url);
+    const data: any = await getWithRetry(client, url); // eslint-disable-line @typescript-eslint/no-explicit-any
 
     const errorCode = data?.Head?.ErrorCode ?? data?.ErrorResponse?.Head?.ErrorCode;
     if (errorCode) {
